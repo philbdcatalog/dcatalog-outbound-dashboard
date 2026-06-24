@@ -138,13 +138,18 @@ export async function GET(request) {
 
     // ----------------------------------------------------------------------
     // BOOKED MEETINGS (from Leads)
+    //
+    // We pull by STATUS, not by Meeting_Booked_Date: that date is unreliably
+    // populated in Zoho (observed 0/32 "Meeting Booked" leads had it). Outbound
+    // attribution is then decided from OUR OWN touch_events, not Zoho's lead
+    // source, since Zoho meetings mix inbound + outbound.
     // ----------------------------------------------------------------------
     const leads = await zohoSearchAll({
       accessToken,
       module: "Leads",
-      criteria: "(Meeting_Booked_Date:not_equal:null)",
+      criteria: "(Lead_Status:equals:Meeting Booked)",
       fields:
-        "Full_Name,Company,Email,Website,Meeting_Booked_Date,Meeting_Performed_Date,Meeting_Status,Lead_Status",
+        "Full_Name,Company,Website,Email,Lead_Status,Meeting_Booked_Date,Meeting_Performed_Date,Meeting_Status,Modified_Time",
     });
     counts.meetings_seen = leads.length;
 
@@ -154,17 +159,28 @@ export async function GET(request) {
         const fullName = zohoName(lead.Full_Name);
         if (TEST_RE.test(company) || TEST_RE.test(fullName)) continue; // skip test data
 
+        // Booking date: prefer Meeting_Booked_Date, but it's frequently blank,
+        // so fall back to the lead's Modified_Time as the best "roughly when".
+        const bookedAt = lead.Meeting_Booked_Date || lead.Modified_Time || null;
+
         const domain = normalizeDomain(lead.Website);
         const account = domain ? await findAccount(supabase, domain) : null;
 
         if (domain && account) {
+          // Outbound attribution from OUR data: did this account receive any
+          // touch (any kind/channel) in the 90 days BEFORE booked_at? If so the
+          // meeting is outbound-attributed. If booked_at is null/unparseable we
+          // can't window it, so fall back to "any touch ever for this account".
+          const isOutbound = await accountTouchedBefore(supabase, account.id, bookedAt);
+
           const meeting = {
             account_id: account.id,
             domain,
-            booked_at: lead.Meeting_Booked_Date ?? null,
+            booked_at: bookedAt,
             performed_at: lead.Meeting_Performed_Date ?? null,
             meeting_status: lead.Meeting_Status ?? null,
             held: lead.Meeting_Status === "Performed",
+            is_outbound: isOutbound,
             source_tool: "zoho",
             external_id: asExternalId(lead.id),
             raw: lead,
@@ -187,7 +203,7 @@ export async function GET(request) {
             company_name: company || fullName || null,
             suggested_domain: domain,
             amount: null,
-            occurred_at: lead.Meeting_Booked_Date ?? null,
+            occurred_at: bookedAt,
             reason: domain ? "no account match for domain" : "no website/domain on lead",
             raw: lead,
           });
@@ -226,6 +242,32 @@ async function findAccount(supabase, domain) {
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+// Outbound attribution: did this account receive any touch_events (any kind,
+// any channel) in the 90 days BEFORE the meeting was booked? A head-only count
+// query keeps it cheap (no rows transferred). Edge case: if bookedAt is
+// null/unparseable we can't window it, so fall back to "any touch ever for this
+// account" — i.e. treat the meeting as outbound if the account has touched at
+// all. Returns true/false.
+async function accountTouchedBefore(supabase, accountId, bookedAt) {
+  const booked = bookedAt ? new Date(bookedAt) : null;
+  const bookedValid = booked && !isNaN(booked.getTime());
+
+  let q = supabase
+    .from("touch_events")
+    .select("id", { count: "exact", head: true })
+    .eq("account_id", accountId);
+
+  if (bookedValid) {
+    const windowStart = new Date(booked.getTime() - 90 * 24 * 60 * 60 * 1000);
+    q = q.lte("occurred_at", booked.toISOString()).gte("occurred_at", windowStart.toISOString());
+  }
+  // When bookedAt is invalid, no time bounds are applied => "any touch ever".
+
+  const { count, error } = await q;
+  if (error) throw error;
+  return (count || 0) > 0;
 }
 
 // Upsert a reconciliation-queue row. ignoreDuplicates so a re-sync never
