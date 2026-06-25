@@ -70,6 +70,13 @@ export async function POST(request) {
     p.profileUrl ||
     null;
 
+  // Rep (outreach owner) — the LinkedIn sender's full name. Matches by full name
+  // across tools (e.g. the same "Traci Vrana" in Lemlist's sendUserName).
+  const repName =
+    (p.sender && (p.sender.full_name || p.sender.fullName || p.sender.name)) ||
+    p.senderName ||
+    null;
+
   // 4) Resolve company domain. BEST-EFFORT for LinkedIn (see helper):
   //    explicit website/domain field -> custom field -> work-email domain.
   const domain = companyDomainFromHeyReachLead(lead);
@@ -153,6 +160,7 @@ export async function POST(request) {
           tool: "heyreach",
           external_id: externalId,
           contact_ident: profileUrl,
+          rep_name: repName,
           raw: payload,
         },
         { onConflict: "tool,external_id", ignoreDuplicates: true }

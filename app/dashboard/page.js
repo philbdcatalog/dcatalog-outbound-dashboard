@@ -183,6 +183,36 @@ export default async function Dashboard() {
         />
       </div>
 
+      <div style={seclabel}>By Rep <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>Lemlist &amp; HeyReach</span></div>
+      <div style={panel}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr>
+            <th style={th}>Rep</th>
+            <th style={{ ...th, textAlign: "right" }}>Accounts</th>
+            <th style={{ ...th, textAlign: "right" }}>Replies</th>
+            <th style={{ ...th, textAlign: "right" }}>Meetings</th>
+            <th style={{ ...th, textAlign: "right" }}>Opps</th>
+            <th style={{ ...th, textAlign: "right" }}>Wins</th>
+          </tr></thead>
+          <tbody>
+            {d.byRep.length === 0 ? (
+              <tr><td style={{ ...td, color: C.muted }} colSpan={6}>No rep data yet</td></tr>
+            ) : (
+              d.byRep.map((r) => (
+                <tr key={r.rep}>
+                  <td style={td}>{r.rep}</td>
+                  <td style={numTd}>{fmt(r.accounts)}</td>
+                  <td style={numTd}>{fmt(r.replies)}</td>
+                  <td style={numTd}>{fmt(r.meetings)}</td>
+                  <td style={numTd}>{fmt(r.opps)}</td>
+                  <td style={numTd}>{fmt(r.wins)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
       <div style={seclabel}>Recent Activity</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
         {[

@@ -55,6 +55,14 @@ export async function POST(request) {
     createdAt,
   } = p;
 
+  // Rep (outreach owner) — matches by full name across tools. Prefer the
+  // sending user's name; fall back to a Lead Owner name if present.
+  const repName =
+    p.sendUserName ||
+    p.leadOwnerName ||
+    (p.leadOwner && (p.leadOwner.name || p.leadOwner.fullName)) ||
+    null;
+
   // Map the event. Untracked events (opens/clicks, failures, not-interested,
   // all linkedin*, lead-state groups) => acknowledge 200, record nothing.
   const mapped = mapLemlistEvent(eventType);
@@ -132,6 +140,7 @@ export async function POST(request) {
           tool: "lemlist",
           external_id: externalId,
           contact_ident: leadEmail || null,
+          rep_name: repName,
           raw: payload,
         },
         { onConflict: "tool,external_id", ignoreDuplicates: true }
