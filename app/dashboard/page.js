@@ -1,4 +1,5 @@
 import { getDashboardData } from "../../lib/aggregates";
+import { ToggleBars } from "./charts";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -26,49 +27,6 @@ const TOOL_LABELS = {
 const toolLabel = (t) =>
   TOOL_LABELS[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Unknown");
 const toolColor = { instantly: C.email, heyreach: C.linkedin, justcall: C.phone, lemlist: C.navy };
-
-// Monthly stacked bars matching the existing SVG chart style. The lighter full
-// bar is `totalKey`; the darker overlay (a subset) is `subKey`. Renders an empty
-// axis gracefully when every value is 0.
-function MonthlyBars({ data, totalKey, subKey, totalColor, subColor }) {
-  const n = data.length || 1;
-  const max = Math.max(1, ...data.map((d) => d[totalKey] || 0));
-  const stepW = 46, barW = 26, top = 14, plotH = 110, baseY = top + plotH;
-  const W = n * stepW, H = baseY + 24;
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: n * stepW }}>
-      {data.map((d, i) => {
-        const x = i * stepW + (stepW - barW) / 2;
-        const tot = d[totalKey] || 0, sub = d[subKey] || 0;
-        const th = (tot / max) * plotH, sh = (sub / max) * plotH;
-        return (
-          <g key={d.label + i}>
-            <rect x={x} y={baseY - th} width={barW} height={th} fill={totalColor} rx={2} />
-            <rect x={x} y={baseY - sh} width={barW} height={sh} fill={subColor} rx={2} />
-            {tot > 0 && (
-              <text x={x + barW / 2} y={baseY - th - 4} textAnchor="middle" fontSize={10} fill={C.inkSoft}>{tot}</text>
-            )}
-            <text x={x + barW / 2} y={baseY + 14} textAnchor="middle" fontSize={10} fill={C.muted}>{d.label}</text>
-          </g>
-        );
-      })}
-      <line x1={0} y1={baseY} x2={W} y2={baseY} stroke={C.line} strokeWidth={1} />
-    </svg>
-  );
-}
-
-function Legend({ items }) {
-  return (
-    <div style={{ display: "flex", gap: 16, fontSize: 11, color: C.inkSoft, marginTop: 6 }}>
-      {items.map((it) => (
-        <span key={it.label} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-          <span style={{ width: 10, height: 10, borderRadius: 2, background: it.color, display: "inline-block" }} />
-          {it.label}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 function Gauge({ label, value, goal, display }) {
   const frac = goal > 0 ? Math.min(1, value / goal) : 0;
@@ -235,10 +193,18 @@ export default async function Dashboard() {
         ))}
       </div>
 
-      <div style={seclabel}>Meetings &amp; Opps Over Time <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>last 6 months</span></div>
+      <div style={seclabel}>Meetings &amp; Opps Over Time</div>
       <div style={panel}>
-        <MonthlyBars data={d.meetingsOverTime} totalKey="meetings" subKey="opps" totalColor={C.navy} subColor={C.navyDeep} />
-        <Legend items={[{ label: "Meetings booked", color: C.navy }, { label: "Became opps", color: C.navyDeep }]} />
+        <ToggleBars
+          weekly={d.meetingsOverTimeWeekly}
+          monthly={d.meetingsOverTime}
+          totalKey="meetings"
+          subKey="opps"
+          totalColor={C.navy}
+          subColor={C.navyDeep}
+          legend={[{ label: "Meetings booked", color: C.navy }, { label: "Became opps", color: C.navyDeep }]}
+          C={C}
+        />
       </div>
 
       <div style={seclabel}>By Campaign</div>
@@ -272,10 +238,18 @@ export default async function Dashboard() {
         </table>
       </div>
 
-      <div style={seclabel}>Accounts Contacted <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>total vs net-new · last 6 months</span></div>
+      <div style={seclabel}>Accounts Contacted <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>total vs net-new</span></div>
       <div style={panel}>
-        <MonthlyBars data={d.accountsContacted} totalKey="total" subKey="netNew" totalColor={C.navy} subColor={C.navyDeep} />
-        <Legend items={[{ label: "Accounts contacted", color: C.navy }, { label: "Net-new", color: C.navyDeep }]} />
+        <ToggleBars
+          weekly={d.accountsContactedWeekly}
+          monthly={d.accountsContacted}
+          totalKey="total"
+          subKey="netNew"
+          totalColor={C.navy}
+          subColor={C.navyDeep}
+          legend={[{ label: "Accounts contacted", color: C.navy }, { label: "Net-new", color: C.navyDeep }]}
+          C={C}
+        />
       </div>
 
       <div style={seclabel}>Deliverability &amp; Volume</div>
