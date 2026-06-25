@@ -1,6 +1,8 @@
 import { getDashboardData } from "../../lib/aggregates";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 const C = {
   bg: "#eef1f8", panel: "#fff", ink: "#1f2a44", inkSoft: "#5b6781",
