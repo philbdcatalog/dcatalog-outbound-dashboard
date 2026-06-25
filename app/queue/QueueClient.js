@@ -134,6 +134,7 @@ export default function QueueClient({ initialRows, C }) {
                         <option value="email">Email</option>
                         <option value="linkedin">LinkedIn</option>
                         <option value="phone">Phone</option>
+                        <option value="multi-channel">Multi-channel</option>
                       </select>
                       {chanErrors[r.id] && (
                         <div style={{ color: "#e05a4d", fontSize: 11, marginTop: 3 }}>{chanErrors[r.id]}</div>

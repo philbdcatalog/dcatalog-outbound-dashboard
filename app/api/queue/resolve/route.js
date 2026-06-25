@@ -92,7 +92,7 @@ export async function POST(request) {
       // meetings.channel is a NOT NULL enum (email | linkedin | phone). Resolve
       // it: prefer the user-picked channel, else derive from the account's last
       // meaningful-touch channel. If neither is available, the UI must prompt.
-      const VALID_CHANNELS = ["email", "linkedin", "phone"];
+      const VALID_CHANNELS = ["email", "linkedin", "phone", "multi-channel"];
       const picked = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "";
       const channel = picked || account.last_channel || null;
 
@@ -104,7 +104,7 @@ export async function POST(request) {
       }
       if (!VALID_CHANNELS.includes(channel)) {
         return Response.json(
-          { ok: false, error: `invalid channel '${channel}' (must be email, linkedin, or phone)` },
+          { ok: false, error: `invalid channel '${channel}' (must be email, linkedin, phone, or multi-channel)` },
           { status: 400 }
         );
       }
