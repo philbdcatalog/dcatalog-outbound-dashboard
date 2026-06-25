@@ -90,6 +90,14 @@ export async function GET(request) {
     });
     counts.deals_seen = deals.length;
 
+    // Start of the current calendar quarter (UTC), computed from the run date.
+    // Used to stop flooding the recon queue with UNMATCHED historical closed-won
+    // deals — only deals closing this quarter are worth reconciling. (Matched
+    // deals still write to `deals` regardless of date.)
+    const now = new Date();
+    const quarterStart = new Date(Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1));
+    let dealsSkippedHistorical = 0;
+
     for (const deal of deals) {
       try {
         const dealName = zohoName(deal.Deal_Name);
@@ -119,6 +127,15 @@ export async function GET(request) {
           if (error) throw error;
           counts.deals_matched++;
         } else {
+          // Unmatched deal: only queue it if it closed in the CURRENT quarter.
+          // Older unmatched closed-won deals are historical noise — skip them
+          // entirely (no queue, no deals row). A missing/unparseable
+          // Closing_Date is NOT treated as historical, so we still queue it.
+          const closing = deal.Closing_Date ? new Date(deal.Closing_Date) : null;
+          if (closing && !isNaN(closing.getTime()) && closing < quarterStart) {
+            dealsSkippedHistorical++;
+            continue;
+          }
           await queueRecon(supabase, {
             kind: "deal",
             zoho_id: deal.id,
@@ -241,7 +258,7 @@ export async function GET(request) {
       ok: true,
       ...counts,
       row_errors: rowErrors.length,
-      debug: { leads_fetched: leads.length, deals_fetched: deals.length, leads_error: leadsError },
+      debug: { leads_fetched: leads.length, deals_fetched: deals.length, deals_skipped_historical: dealsSkippedHistorical, leads_error: leadsError },
     });
   } catch (err) {
     // Fatal error (token exchange, Zoho fetch, etc.). Record it on the run row.
