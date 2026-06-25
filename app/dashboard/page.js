@@ -1,5 +1,5 @@
 import { getDashboardData } from "../../lib/aggregates";
-import { ToggleBars } from "./charts";
+import { DualBars, GroupedBars } from "./charts";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -27,6 +27,9 @@ const TOOL_LABELS = {
 const toolLabel = (t) =>
   TOOL_LABELS[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Unknown");
 const toolColor = { instantly: C.email, heyreach: C.linkedin, justcall: C.phone, lemlist: C.navy };
+const TOOL_SHORT = { instantly: "Instantly", heyreach: "HeyReach", justcall: "JustCall", lemlist: "Lemlist" };
+const toolShortLabel = (t) =>
+  TOOL_SHORT[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Unknown");
 
 function Gauge({ label, value, goal, display }) {
   const frac = goal > 0 ? Math.min(1, value / goal) : 0;
@@ -170,12 +173,22 @@ export default async function Dashboard() {
         </table>
       </div>
 
+      <div style={seclabel}>Meetings, Opportunities &amp; Wins by Tool</div>
+      <div style={panel}>
+        <GroupedBars
+          data={d.byToolMeetingsOppsWins}
+          toolColor={toolColor}
+          toolShortLabel={toolShortLabel}
+          C={C}
+        />
+      </div>
+
       <div style={seclabel}>Recent Activity</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
         {[
-          ["Reached Meeting", d.recent.meetings],
-          ["Reached Opp", d.recent.opps],
-          ["Reached Won", d.recent.won],
+          ["Meetings set", d.recent.meetings],
+          ["Opps", d.recent.opps],
+          ["Wins", d.recent.won],
         ].map(([title, list]) => (
           <div key={title} style={panel}>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>{title}</div>
@@ -185,7 +198,7 @@ export default async function Dashboard() {
               list.map((r, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "4px 0", borderBottom: i < list.length - 1 ? `1px solid ${C.line}` : "none" }}>
                   <span style={{ color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.domain}</span>
-                  <span style={{ color: C.muted, flexShrink: 0, marginLeft: 8 }}>{fmtDate(r.date)}</span>
+                  <span style={{ color: C.muted, flexShrink: 0, marginLeft: 8 }}>{fmtDate(r.date)}{r.channel ? ` · ${r.channel}` : ""}</span>
                 </div>
               ))
             )}
@@ -195,9 +208,9 @@ export default async function Dashboard() {
 
       <div style={seclabel}>Meetings &amp; Opps Over Time</div>
       <div style={panel}>
-        <ToggleBars
-          weekly={d.meetingsOverTimeWeekly}
+        <DualBars
           monthly={d.meetingsOverTime}
+          weekly={d.meetingsOverTimeWeekly}
           totalKey="meetings"
           subKey="opps"
           totalColor={C.navy}
@@ -240,9 +253,9 @@ export default async function Dashboard() {
 
       <div style={seclabel}>Accounts Contacted <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>total vs net-new</span></div>
       <div style={panel}>
-        <ToggleBars
-          weekly={d.accountsContactedWeekly}
+        <DualBars
           monthly={d.accountsContacted}
+          weekly={d.accountsContactedWeekly}
           totalKey="total"
           subKey="netNew"
           totalColor={C.navy}
