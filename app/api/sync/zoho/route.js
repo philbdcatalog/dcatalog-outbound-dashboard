@@ -1,5 +1,5 @@
 import { getServiceClient } from "../../../../lib/supabase";
-import { normalizeDomain } from "../../../../lib/ingest";
+import { normalizeDomain, domainFromEmail } from "../../../../lib/ingest";
 import { getZohoAccessToken, zohoSearchAll } from "../../../../lib/zoho";
 
 // GET /api/sync/zoho
@@ -144,13 +144,25 @@ export async function GET(request) {
     // attribution is then decided from OUR OWN touch_events, not Zoho's lead
     // source, since Zoho meetings mix inbound + outbound.
     // ----------------------------------------------------------------------
-    const leads = await zohoSearchAll({
-      accessToken,
-      module: "Leads",
-      criteria: "(Lead_Status:equals:Meeting Booked)",
-      fields:
-        "Full_Name,Company,Website,Email,Lead_Status,Meeting_Booked_Date,Meeting_Performed_Date,Meeting_Status,Modified_Time",
-    });
+    let leads = [];
+    let leadsError = null;
+    try {
+      leads = await zohoSearchAll({
+        accessToken,
+        module: "Leads",
+        criteria: "(Lead_Status:equals:Meeting Booked)",
+        fields:
+          "Full_Name,Company,Website,Email,Lead_Status,Meeting_Booked_Date,Meeting_Performed_Date,Meeting_Status,Modified_Time",
+      });
+      console.log("[zoho-sync] leads fetched:", leads.length);
+    } catch (e) {
+      // Don't silently swallow: log loudly and surface it. meetings_seen will
+      // reflect the real outcome (0 fetched on failure), and the error feeds the
+      // run's error field via rowErrors so we see it instead of a phantom 0.
+      leadsError = e.message;
+      console.error("[zoho-sync] Leads fetch failed:", e);
+      rowErrors.push(`leads fetch: ${e.message}`);
+    }
     counts.meetings_seen = leads.length;
 
     for (const lead of leads) {
@@ -163,7 +175,11 @@ export async function GET(request) {
         // so fall back to the lead's Modified_Time as the best "roughly when".
         const bookedAt = lead.Meeting_Booked_Date || lead.Modified_Time || null;
 
-        const domain = normalizeDomain(lead.Website);
+        // Resolve domain from Website, falling back to the work email's domain
+        // (domainFromEmail drops free providers). Many leads have a blank Website
+        // but a usable company email — e.g. Terry Conan (blank Website,
+        // terry@inlandglobal.com) resolves to inlandglobal.com.
+        const domain = normalizeDomain(lead.Website) || domainFromEmail(lead.Email);
         const account = domain ? await findAccount(supabase, domain) : null;
 
         if (domain && account) {
@@ -220,7 +236,12 @@ export async function GET(request) {
       error: rowErrors.length ? rowErrors.slice(0, 20).join("; ") : null,
     });
 
-    return Response.json({ ok: true, ...counts, row_errors: rowErrors.length });
+    return Response.json({
+      ok: true,
+      ...counts,
+      row_errors: rowErrors.length,
+      debug: { leads_fetched: leads.length, deals_fetched: deals.length, leads_error: leadsError },
+    });
   } catch (err) {
     // Fatal error (token exchange, Zoho fetch, etc.). Record it on the run row.
     await finishRun(supabase, runId, {

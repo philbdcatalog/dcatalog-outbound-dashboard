@@ -13,6 +13,17 @@ const pct = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(2) + "%" : "–");
 const fmtDate = (s) =>
   s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "—";
 const chLabel = { email: "Email (Instantly)", linkedin: "LinkedIn (HeyReach)", phone: "Phone (JustCall)" };
+// By-tool display labels and dot colors. Unknown tools fall back to a
+// capitalized tool name / neutral ink.
+const TOOL_LABELS = {
+  instantly: "Email (Instantly)",
+  heyreach: "LinkedIn (HeyReach)",
+  justcall: "Phone (JustCall)",
+  lemlist: "Multi-channel (Lemlist)",
+};
+const toolLabel = (t) =>
+  TOOL_LABELS[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Unknown");
+const toolColor = { instantly: C.email, heyreach: C.linkedin, justcall: C.phone, lemlist: C.navy };
 
 // Monthly stacked bars matching the existing SVG chart style. The lighter full
 // bar is `totalKey`; the darker overlay (a subset) is `subKey`. Renders an empty
@@ -174,12 +185,11 @@ export default async function Dashboard() {
             <th style={{ ...th, textAlign: "right" }}>Reply %</th>
           </tr></thead>
           <tbody>
-            {d.byChannel.map((row) => {
-              const color = C[row.channel] || C.ink;
-              const labelMap = { email: "Email (Instantly)", linkedin: "LinkedIn (HeyReach)", phone: "Phone (JustCall)" };
+            {d.byTool.map((row) => {
+              const color = toolColor[row.tool] || C.ink;
               return (
-                <tr key={row.channel}>
-                  <td style={td}><span style={{ color }}>●</span> {labelMap[row.channel]}</td>
+                <tr key={row.tool}>
+                  <td style={td}><span style={{ color }}>●</span> {toolLabel(row.tool)}</td>
                   <td style={numTd}>{fmt(row.contacted)}</td>
                   <td style={numTd}>{fmt(row.replied)}</td>
                   <td style={numTd}>{fmt(row.meetings)}</td>
