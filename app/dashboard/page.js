@@ -10,6 +10,52 @@ const C = {
 };
 const fmt = (n) => (n ?? 0).toLocaleString();
 const pct = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(2) + "%" : "–");
+const fmtDate = (s) =>
+  s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "—";
+const chLabel = { email: "Email (Instantly)", linkedin: "LinkedIn (HeyReach)", phone: "Phone (JustCall)" };
+
+// Monthly stacked bars matching the existing SVG chart style. The lighter full
+// bar is `totalKey`; the darker overlay (a subset) is `subKey`. Renders an empty
+// axis gracefully when every value is 0.
+function MonthlyBars({ data, totalKey, subKey, totalColor, subColor }) {
+  const n = data.length || 1;
+  const max = Math.max(1, ...data.map((d) => d[totalKey] || 0));
+  const stepW = 46, barW = 26, top = 14, plotH = 110, baseY = top + plotH;
+  const W = n * stepW, H = baseY + 24;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: n * stepW }}>
+      {data.map((d, i) => {
+        const x = i * stepW + (stepW - barW) / 2;
+        const tot = d[totalKey] || 0, sub = d[subKey] || 0;
+        const th = (tot / max) * plotH, sh = (sub / max) * plotH;
+        return (
+          <g key={d.label + i}>
+            <rect x={x} y={baseY - th} width={barW} height={th} fill={totalColor} rx={2} />
+            <rect x={x} y={baseY - sh} width={barW} height={sh} fill={subColor} rx={2} />
+            {tot > 0 && (
+              <text x={x + barW / 2} y={baseY - th - 4} textAnchor="middle" fontSize={10} fill={C.inkSoft}>{tot}</text>
+            )}
+            <text x={x + barW / 2} y={baseY + 14} textAnchor="middle" fontSize={10} fill={C.muted}>{d.label}</text>
+          </g>
+        );
+      })}
+      <line x1={0} y1={baseY} x2={W} y2={baseY} stroke={C.line} strokeWidth={1} />
+    </svg>
+  );
+}
+
+function Legend({ items }) {
+  return (
+    <div style={{ display: "flex", gap: 16, fontSize: 11, color: C.inkSoft, marginTop: 6 }}>
+      {items.map((it) => (
+        <span key={it.label} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <span style={{ width: 10, height: 10, borderRadius: 2, background: it.color, display: "inline-block" }} />
+          {it.label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function Gauge({ label, value, goal, display }) {
   const frac = goal > 0 ? Math.min(1, value / goal) : 0;
@@ -154,10 +200,108 @@ export default async function Dashboard() {
         </table>
       </div>
 
+      <div style={seclabel}>Recent Activity</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+        {[
+          ["Reached Meeting", d.recent.meetings],
+          ["Reached Opp", d.recent.opps],
+          ["Reached Won", d.recent.won],
+        ].map(([title, list]) => (
+          <div key={title} style={panel}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>{title}</div>
+            {list.length === 0 ? (
+              <div style={{ fontSize: 12, color: C.muted }}>No activity yet</div>
+            ) : (
+              list.map((r, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "4px 0", borderBottom: i < list.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                  <span style={{ color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.domain}</span>
+                  <span style={{ color: C.muted, flexShrink: 0, marginLeft: 8 }}>{fmtDate(r.date)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={seclabel}>Meetings &amp; Opps Over Time <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>last 6 months</span></div>
+      <div style={panel}>
+        <MonthlyBars data={d.meetingsOverTime} totalKey="meetings" subKey="opps" totalColor={C.navy} subColor={C.navyDeep} />
+        <Legend items={[{ label: "Meetings booked", color: C.navy }, { label: "Became opps", color: C.navyDeep }]} />
+      </div>
+
+      <div style={seclabel}>By Campaign</div>
+      <div style={panel}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr>
+            <th style={th}>Campaign</th>
+            <th style={{ ...th, textAlign: "right" }}>Reply %</th>
+            <th style={{ ...th, textAlign: "right" }}>Meetings</th>
+            <th style={{ ...th, textAlign: "right" }}>Opps</th>
+            <th style={{ ...th, textAlign: "right" }}>Top copy variant</th>
+          </tr></thead>
+          <tbody>
+            {d.byCampaign.length === 0 ? (
+              <tr><td style={{ ...td, color: C.muted }} colSpan={5}>No campaigns yet</td></tr>
+            ) : (
+              d.byCampaign.map((c) => {
+                const color = C[c.channel] || C.ink;
+                return (
+                  <tr key={c.id}>
+                    <td style={td}><span style={{ color }}>●</span> {c.name}</td>
+                    <td style={numTd}>{pct(c.replies, c.sends)}</td>
+                    <td style={numTd}>{fmt(c.meetings)}</td>
+                    <td style={numTd}>{fmt(c.opps)}</td>
+                    <td style={{ ...td, textAlign: "right", color: c.topVariant === "–" ? C.muted : C.ink }}>{c.topVariant}</td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div style={seclabel}>Accounts Contacted <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>total vs net-new · last 6 months</span></div>
+      <div style={panel}>
+        <MonthlyBars data={d.accountsContacted} totalKey="total" subKey="netNew" totalColor={C.navy} subColor={C.navyDeep} />
+        <Legend items={[{ label: "Accounts contacted", color: C.navy }, { label: "Net-new", color: C.navyDeep }]} />
+      </div>
+
+      <div style={seclabel}>Deliverability &amp; Volume</div>
+      <div style={panel}>
+        <div style={{ fontSize: 11, color: C.muted, marginBottom: 8 }}>Diagnostic — not the scoreboard</div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr>
+            <th style={th}>Channel</th>
+            <th style={{ ...th, textAlign: "right" }}>Sends</th>
+            <th style={{ ...th, textAlign: "right" }}>Bounces</th>
+            <th style={{ ...th, textAlign: "right" }}>Connects</th>
+            <th style={{ ...th, textAlign: "right" }}>Replies</th>
+            <th style={{ ...th, textAlign: "right" }}>Accepts</th>
+            <th style={{ ...th, textAlign: "right" }}>Unsubscribes</th>
+          </tr></thead>
+          <tbody>
+            {d.deliverability.map((row) => {
+              const color = C[row.channel] || C.ink;
+              return (
+                <tr key={row.channel}>
+                  <td style={td}><span style={{ color }}>●</span> {chLabel[row.channel] || row.channel}</td>
+                  <td style={numTd}>{fmt(row.sends)}</td>
+                  <td style={numTd}>{fmt(row.bounces)}</td>
+                  <td style={numTd}>{fmt(row.connects)}</td>
+                  <td style={numTd}>{fmt(row.replies)}</td>
+                  <td style={numTd}>{fmt(row.accepts)}</td>
+                  <td style={numTd}>{fmt(row.unsubscribes)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
       <div style={{ marginTop: 18, fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
         Live from Supabase, recomputed on every load. Funnel counts unique accounts per stage.
         Replies, meetings, and wins are attributed to each account&apos;s last meaningful touch, so channel rows sum cleanly.
-        Time-series charts, by-campaign, activity, and cost sections are wired in subsequent steps.
+        Cycle-time and cost &amp; efficiency sections are phase 2.
       </div>
     </main>
   );
