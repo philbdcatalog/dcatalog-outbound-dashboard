@@ -19,6 +19,7 @@ import { getZohoAccessToken, zohoSearchAll } from "../../../../lib/zoho";
 // Either one passing authorizes the run.
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 export const maxDuration = 60;
 
 // Substring test-data filter, per spec (case-insensitive). NOTE: this is a

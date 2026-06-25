@@ -5,6 +5,7 @@
 // token. NOTE: this intentionally returns the FULL access token for debugging;
 // that is acceptable only short-term — DELETE this route after debugging.
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
 
 export async function GET(request) {
   const url = new URL(request.url);
@@ -39,6 +40,7 @@ export async function GET(request) {
         client_secret: cs,
         refresh_token: rt,
       }).toString(),
+      cache: "no-store",
     });
     const tokJson = await tokRes.json();
     diag.token_exchange = {
@@ -54,7 +56,7 @@ export async function GET(request) {
     // make the minimal search (using www.zohoapis.com as before)
     const res = await fetch(
       "https://www.zohoapis.com/crm/v8/Deals/search?criteria=(Stage:equals:Closed Won)&fields=Deal_Name&per_page=1",
-      { headers: { Authorization: `Zoho-oauthtoken ${tokJson.access_token}` } }
+      { headers: { Authorization: `Zoho-oauthtoken ${tokJson.access_token}` }, cache: "no-store" }
     );
     diag.search_status = res.status;
     diag.search_body = (await res.text()).slice(0, 300);
