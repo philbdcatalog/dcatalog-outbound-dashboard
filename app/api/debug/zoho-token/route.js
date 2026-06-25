@@ -1,9 +1,9 @@
-import { getZohoAccessToken } from "../../../../lib/zoho";
-
 // TEMPORARY diagnostic route to debug a Zoho INVALID_TOKEN issue.
-// Token-protected with ?token=<ZOHO_SYNC_SECRET>. Reports env-var fingerprints
-// (lengths + a few head/tail chars only — never full secrets), the access-token
-// exchange result, and one minimal Deals search. DELETE after debugging.
+// Token-protected with ?token=<ZOHO_SYNC_SECRET>. Does its OWN inline token
+// exchange (not via the lib helper) so it can inspect the full token response —
+// api_domain (which datacenter Zoho says to use), scope, and the raw access
+// token. NOTE: this intentionally returns the FULL access token for debugging;
+// that is acceptable only short-term — DELETE this route after debugging.
 export const dynamic = "force-dynamic";
 
 export async function GET(request) {
@@ -26,13 +26,35 @@ export async function GET(request) {
       refresh_token_head: rt.slice(0, 8),
       refresh_token_tail: rt.slice(-6),
     };
-    const at = await getZohoAccessToken();
-    diag.access_token_len = (at || "").length;
-    diag.access_token_head = (at || "").slice(0, 10);
-    // make the minimal search
+
+    diag.api_domain_used = "https://www.zohoapis.com";
+
+    // Inline token exchange so we can inspect the full response.
+    const tokRes = await fetch("https://accounts.zoho.com/oauth/v2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "refresh_token",
+        client_id: cid,
+        client_secret: cs,
+        refresh_token: rt,
+      }).toString(),
+    });
+    const tokJson = await tokRes.json();
+    diag.token_exchange = {
+      status: tokRes.status,
+      api_domain: tokJson.api_domain,
+      scope: tokJson.scope,
+      has_token: !!tokJson.access_token,
+    };
+    diag.access_token_full = tokJson.access_token || null;
+    diag.access_token_len = (tokJson.access_token || "").length;
+    diag.access_token_head = (tokJson.access_token || "").slice(0, 10);
+
+    // make the minimal search (using www.zohoapis.com as before)
     const res = await fetch(
       "https://www.zohoapis.com/crm/v8/Deals/search?criteria=(Stage:equals:Closed Won)&fields=Deal_Name&per_page=1",
-      { headers: { Authorization: `Zoho-oauthtoken ${at}` } }
+      { headers: { Authorization: `Zoho-oauthtoken ${tokJson.access_token}` } }
     );
     diag.search_status = res.status;
     diag.search_body = (await res.text()).slice(0, 300);
