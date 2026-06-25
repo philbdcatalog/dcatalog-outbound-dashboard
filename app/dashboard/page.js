@@ -1,5 +1,5 @@
 import { getDashboardData } from "../../lib/aggregates";
-import { TripleBars, GroupedBars } from "./charts";
+import { TripleBars, MetricByToolCards } from "./charts";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -9,7 +9,7 @@ const C = {
   bg: "#eef1f8", panel: "#fff", ink: "#1f2a44", inkSoft: "#5b6781",
   muted: "#8a93a8", line: "#eef1f6", navy: "#3a4d8f", navyDeep: "#2c3a6b",
   email: "#2f4ba0", linkedin: "#2a9d8f", phone: "#c4773a", green: "#2f9e5e",
-  highlight: "#e8f4ec",
+  lemlist: "#7a5cc0", highlight: "#e8f4ec",
 };
 const fmt = (n) => (n ?? 0).toLocaleString();
 const pct = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(2) + "%" : "–");
@@ -26,7 +26,7 @@ const TOOL_LABELS = {
 };
 const toolLabel = (t) =>
   TOOL_LABELS[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Unknown");
-const toolColor = { instantly: C.email, heyreach: C.linkedin, justcall: C.phone, lemlist: C.navy };
+const toolColor = { instantly: C.email, heyreach: C.linkedin, justcall: C.phone, lemlist: C.lemlist };
 const TOOL_SHORT = { instantly: "Instantly", heyreach: "HeyReach", justcall: "JustCall", lemlist: "Lemlist" };
 const toolShortLabel = (t) =>
   TOOL_SHORT[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Unknown");
@@ -117,7 +117,7 @@ export default async function Dashboard() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ fontSize: 30, fontWeight: 600, color: C.navy }}>Outbound Dashboard</h1>
-          <div style={{ color: C.inkSoft, fontSize: 13 }}>Multi-channel and account-based · Instantly, HeyReach, JustCall, Lemlist (planned)</div>
+          <div style={{ color: C.inkSoft, fontSize: 13 }}>Multi-channel and account-based · Instantly, HeyReach, JustCall, Lemlist</div>
           <a href="/queue" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8, color: C.navy, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
             Reconciliation Queue
             {d.reconPending > 0 && (
@@ -233,14 +233,12 @@ export default async function Dashboard() {
       </div>
 
       <div style={seclabel}>Meetings, Opportunities &amp; Wins by Tool</div>
-      <div style={panel}>
-        <GroupedBars
-          data={d.byToolMeetingsOppsWins}
-          toolColor={toolColor}
-          toolShortLabel={toolShortLabel}
-          C={C}
-        />
-      </div>
+      <MetricByToolCards
+        data={d.byToolMeetingsOppsWins}
+        toolColor={toolColor}
+        toolShortLabel={toolShortLabel}
+        C={C}
+      />
 
       <div style={seclabel}>By Rep <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>Lemlist &amp; HeyReach</span></div>
       <div style={panel}>
@@ -298,11 +296,10 @@ export default async function Dashboard() {
             <th style={{ ...th, textAlign: "right" }}>Reply %</th>
             <th style={{ ...th, textAlign: "right" }}>Meetings</th>
             <th style={{ ...th, textAlign: "right" }}>Opps</th>
-            <th style={{ ...th, textAlign: "right" }}>Top copy variant</th>
           </tr></thead>
           <tbody>
             {d.byCampaign.length === 0 ? (
-              <tr><td style={{ ...td, color: C.muted }} colSpan={5}>No campaigns yet</td></tr>
+              <tr><td style={{ ...td, color: C.muted }} colSpan={4}>No campaigns yet</td></tr>
             ) : (
               d.byCampaign.map((c) => {
                 const color = C[c.channel] || C.ink;
@@ -312,7 +309,6 @@ export default async function Dashboard() {
                     <td style={numTd}>{pct(c.replies, c.sends)}</td>
                     <td style={numTd}>{fmt(c.meetings)}</td>
                     <td style={numTd}>{fmt(c.opps)}</td>
-                    <td style={{ ...td, textAlign: "right", color: c.topVariant === "–" ? C.muted : C.ink }}>{c.topVariant}</td>
                   </tr>
                 );
               })

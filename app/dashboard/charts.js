@@ -88,51 +88,72 @@ export function TripleBars({ quarterly, monthly, weekly, totalKey, subKey, total
   );
 }
 
-// Clustered/grouped bar chart: one x-axis group per metric (Meetings,
-// Opportunities, Wins), and within each group one bar per tool. `data` is
-// [{ tool, meetings, opps, wins }]; `toolColor` maps tool -> color and
-// `toolShortLabel` maps tool -> short display name. Renders gracefully when all
-// values are 0 (bars collapse to the axis, labels still show).
-export function GroupedBars({ data, toolColor, toolShortLabel, C }) {
-  const groups = [
+// Single-series bar chart: one bar per item, each its own color, x-labelled by
+// item.label. Same fixed-viewBox / balanced-bar approach as the time-view Bars,
+// so 4 bars fill the card width nicely. Empty-safe (bars collapse to the axis).
+function ToolBars({ items, C }) {
+  const n = items.length || 1;
+  const max = Math.max(1, ...items.map((it) => it.value || 0));
+  const pad = 6, top = 16, plotH = 110, baseY = top + plotH;
+  const W = 300, H = baseY + 26;
+  const slotW = (W - pad * 2) / n;
+  const barW = Math.min(40, slotW * 0.62);
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
+      {items.map((it, i) => {
+        const cx = pad + slotW * (i + 0.5);
+        const x = cx - barW / 2;
+        const v = it.value || 0;
+        const h = (v / max) * plotH;
+        return (
+          <g key={it.label + i}>
+            <rect x={x} y={baseY - h} width={barW} height={h} fill={it.color} rx={2} />
+            {v > 0 && (
+              <text x={cx} y={baseY - h - 4} textAnchor="middle" fontSize={10} fill={C.inkSoft}>{v}</text>
+            )}
+            <text x={cx} y={baseY + 14} textAnchor="middle" fontSize={9} fill={C.muted}>{it.label}</text>
+          </g>
+        );
+      })}
+      <line x1={0} y1={baseY} x2={W} y2={baseY} stroke={C.line} strokeWidth={1} />
+    </svg>
+  );
+}
+
+// Three separate equal white cards — Meetings | Opportunities | Wins — each a
+// small per-tool bar chart (one bar per tool). `data` is
+// [{ tool, meetings, opps, wins }]; bars are self-labelled by tool on the
+// x-axis, so no extra legend is needed. Same card style as the time-view cards.
+export function MetricByToolCards({ data, toolColor, toolShortLabel, C }) {
+  const metrics = [
     { key: "meetings", label: "Meetings" },
     { key: "opps", label: "Opportunities" },
     { key: "wins", label: "Wins" },
   ];
-  const tools = data.map((d) => d.tool);
-  const max = Math.max(1, ...data.flatMap((d) => [d.meetings || 0, d.opps || 0, d.wins || 0]));
-  const barW = 16, barGap = 3, groupGap = 32, pad = 10;
-  const groupW = tools.length * barW + (tools.length - 1) * barGap;
-  const top = 14, plotH = 110, baseY = top + plotH;
-  const W = pad * 2 + groups.length * groupW + (groups.length - 1) * groupGap;
-  const H = baseY + 26;
+  const card = {
+    flex: "1 1 0",
+    minWidth: 0,
+    background: C.panel,
+    borderRadius: 12,
+    padding: 16,
+    boxShadow: "0 4px 16px rgba(31,42,68,.05)",
+  };
+  const subLabel = { fontSize: 11, fontWeight: 700, color: C.inkSoft, marginBottom: 8 };
   return (
-    <div>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: W * 1.7 }}>
-        {groups.map((g, gi) => {
-          const gx = pad + gi * (groupW + groupGap);
-          return (
-            <g key={g.key}>
-              {data.map((d, j) => {
-                const v = d[g.key] || 0;
-                const h = (v / max) * plotH;
-                const x = gx + j * (barW + barGap);
-                return (
-                  <g key={d.tool}>
-                    <rect x={x} y={baseY - h} width={barW} height={h} fill={toolColor[d.tool] || C.ink} rx={2} />
-                    {v > 0 && (
-                      <text x={x + barW / 2} y={baseY - h - 3} textAnchor="middle" fontSize={9} fill={C.inkSoft}>{v}</text>
-                    )}
-                  </g>
-                );
-              })}
-              <text x={gx + groupW / 2} y={baseY + 15} textAnchor="middle" fontSize={11} fontWeight={600} fill={C.inkSoft}>{g.label}</text>
-            </g>
-          );
-        })}
-        <line x1={0} y1={baseY} x2={W} y2={baseY} stroke={C.line} strokeWidth={1} />
-      </svg>
-      <Legend items={tools.map((t) => ({ label: toolShortLabel(t), color: toolColor[t] || C.ink }))} C={C} />
+    <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+      {metrics.map((m) => (
+        <div key={m.key} style={card}>
+          <div style={subLabel}>{m.label}</div>
+          <ToolBars
+            items={data.map((d) => ({
+              label: toolShortLabel(d.tool),
+              value: d[m.key] || 0,
+              color: toolColor[d.tool] || C.ink,
+            }))}
+            C={C}
+          />
+        </div>
+      ))}
     </div>
   );
 }
