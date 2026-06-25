@@ -31,6 +31,36 @@ const TOOL_SHORT = { instantly: "Instantly", heyreach: "HeyReach", justcall: "Ju
 const toolShortLabel = (t) =>
   TOOL_SHORT[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Unknown");
 
+// Rep name -> headshot in /public/reps. Extend this as reps are added.
+const REP_PHOTOS = {
+  "Traci Vrana": "/reps/traci.jpg",
+  "Phil Benavides": "/reps/phil.jpg",
+};
+
+// Small circular avatar for the By Rep table. Falls back to an initials circle
+// when the rep has no mapped photo, so unmapped reps never break.
+function RepAvatar({ name }) {
+  const size = 28;
+  const base = { width: size, height: size, borderRadius: "50%", flexShrink: 0 };
+  const src = REP_PHOTOS[name];
+  if (src) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt={name} width={size} height={size} style={{ ...base, objectFit: "cover" }} />;
+  }
+  const initials = (name || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+  return (
+    <span style={{ ...base, display: "inline-flex", alignItems: "center", justifyContent: "center", background: C.line, color: C.navy, fontSize: 11, fontWeight: 700 }}>
+      {initials || "?"}
+    </span>
+  );
+}
+
 function Gauge({ label, value, goal, display }) {
   const frac = goal > 0 ? Math.min(1, value / goal) : 0;
   const r = 70, cx = 90, cy = 90;
@@ -136,6 +166,29 @@ export default async function Dashboard() {
         </table>
       </div>
 
+      <div style={seclabel}>Recent Activity</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+        {[
+          ["Meetings set", d.recent.meetings],
+          ["Opps", d.recent.opps],
+          ["Wins", d.recent.won],
+        ].map(([title, list]) => (
+          <div key={title} style={panel}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>{title}</div>
+            {list.length === 0 ? (
+              <div style={{ fontSize: 12, color: C.muted }}>No activity yet</div>
+            ) : (
+              list.map((r, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "4px 0", borderBottom: i < list.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                  <span style={{ color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.domain}</span>
+                  <span style={{ color: C.muted, flexShrink: 0, marginLeft: 8 }}>{fmtDate(r.date)}{r.channel ? ` · ${r.channel}` : ""}</span>
+                </div>
+              ))
+            )}
+          </div>
+        ))}
+      </div>
+
       <div style={seclabel}>By Channel</div>
       <div style={panel}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -200,7 +253,12 @@ export default async function Dashboard() {
             ) : (
               d.byRep.map((r) => (
                 <tr key={r.rep}>
-                  <td style={td}>{r.rep}</td>
+                  <td style={td}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <RepAvatar name={r.rep} />
+                      {r.rep}
+                    </span>
+                  </td>
                   <td style={numTd}>{fmt(r.accounts)}</td>
                   <td style={numTd}>{fmt(r.replies)}</td>
                   <td style={numTd}>{fmt(r.meetings)}</td>
@@ -211,29 +269,6 @@ export default async function Dashboard() {
             )}
           </tbody>
         </table>
-      </div>
-
-      <div style={seclabel}>Recent Activity</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
-        {[
-          ["Meetings set", d.recent.meetings],
-          ["Opps", d.recent.opps],
-          ["Wins", d.recent.won],
-        ].map(([title, list]) => (
-          <div key={title} style={panel}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>{title}</div>
-            {list.length === 0 ? (
-              <div style={{ fontSize: 12, color: C.muted }}>No activity yet</div>
-            ) : (
-              list.map((r, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "4px 0", borderBottom: i < list.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                  <span style={{ color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.domain}</span>
-                  <span style={{ color: C.muted, flexShrink: 0, marginLeft: 8 }}>{fmtDate(r.date)}{r.channel ? ` · ${r.channel}` : ""}</span>
-                </div>
-              ))
-            )}
-          </div>
-        ))}
       </div>
 
       <div style={seclabel}>Meetings &amp; Opps Over Time</div>
