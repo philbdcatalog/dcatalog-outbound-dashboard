@@ -26,8 +26,7 @@ async function getPending() {
   }
 }
 
-export default async function QueuePage({ searchParams }) {
-  const token = searchParams?.token || "";
+export default async function QueuePage() {
   const res = await getPending();
 
   return (
@@ -48,19 +47,13 @@ export default async function QueuePage({ searchParams }) {
         )}
       </div>
 
-      {!token && res.ok && res.rows.length > 0 && (
-        <div style={{ background: C.panel, borderRadius: 12, padding: "12px 16px", margin: "16px 0", borderLeft: "3px solid #f2b134", color: C.inkSoft, fontSize: 13, boxShadow: "0 4px 16px rgba(31,42,68,.05)" }}>
-          Read-only view. Append <code>?token=&lt;ZOHO_SYNC_SECRET&gt;</code> to the URL to enable the approve / reject actions.
-        </div>
-      )}
-
       <div style={{ marginTop: 16 }}>
         {!res.ok ? (
           <div style={{ background: C.panel, borderRadius: 12, padding: 18, color: "#e05a4d", fontSize: 13, boxShadow: "0 4px 16px rgba(31,42,68,.05)" }}>
             Could not load the queue: {res.error}
           </div>
         ) : (
-          <QueueClient initialRows={res.rows} token={token} C={C} />
+          <QueueClient initialRows={res.rows} C={C} />
         )}
       </div>
     </main>

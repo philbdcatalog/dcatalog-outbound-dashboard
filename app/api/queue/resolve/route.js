@@ -1,5 +1,6 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain } from "../../../../lib/ingest";
+import { SESSION_COOKIE, verifySessionToken } from "../../../../lib/auth";
 
 // POST /api/queue/resolve
 // Resolves a zoho_recon_queue row from the Reconciliation Queue UI.
@@ -9,16 +10,17 @@ import { normalizeDomain } from "../../../../lib/ingest";
 //   under the given domain (creating the account if needed), then mark the queue
 //   row approved. reject = "Not outbound": just mark the row rejected.
 //
-// Auth: reuses the existing ?token= shared-secret pattern (ZOHO_SYNC_SECRET),
-// since this acts on Zoho-sourced recon data. Writes use the service-role client.
+// Auth: requires a valid login session cookie (same cookie the middleware
+// validates) — only logged-in team members can approve/reject. The middleware
+// also guards this route; this is defense-in-depth. Writes use the service-role
+// client.
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
 export async function POST(request) {
-  const url = new URL(request.url);
-  const expected = process.env.ZOHO_SYNC_SECRET;
-  if (!expected || url.searchParams.get("token") !== expected) {
+  const cookie = request.cookies.get(SESSION_COOKIE)?.value;
+  if (!(await verifySessionToken(cookie, process.env.APP_PASSWORD))) {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 

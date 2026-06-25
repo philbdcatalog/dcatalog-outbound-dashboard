@@ -118,12 +118,15 @@ export default async function Dashboard() {
         <div>
           <h1 style={{ fontSize: 30, fontWeight: 600, color: C.navy }}>Outbound Dashboard</h1>
           <div style={{ color: C.inkSoft, fontSize: 13 }}>Multi-channel and account-based · Instantly, HeyReach, JustCall, Lemlist</div>
-          <a href="/queue" style={{ display: "inline-flex", alignItems: "center", gap: 6, marginTop: 8, color: C.navy, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
-            Reconciliation Queue
-            {d.reconPending > 0 && (
-              <span style={{ background: C.navy, color: "#fff", fontSize: 11, fontWeight: 700, borderRadius: 10, padding: "1px 8px", lineHeight: 1.6 }}>{d.reconPending}</span>
-            )}
-          </a>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 8 }}>
+            <a href="/queue" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.navy, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+              Reconciliation Queue
+              {d.reconPending > 0 && (
+                <span style={{ background: C.navy, color: "#fff", fontSize: 11, fontWeight: 700, borderRadius: 10, padding: "1px 8px", lineHeight: 1.6 }}>{d.reconPending}</span>
+              )}
+            </a>
+            <a href="/api/logout" style={{ color: C.muted, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>Log out</a>
+          </div>
         </div>
         <div style={{ background: C.navyDeep, color: "#fff", borderRadius: 8, padding: "8px 16px", textAlign: "right" }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>Q2 2026 · Apr – Jun</div>

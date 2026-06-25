@@ -6,7 +6,7 @@ const fmtDate = (s) =>
   s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "—";
 const fmtMoney = (n) => (n == null ? "—" : "$" + Number(n).toLocaleString());
 
-export default function QueueClient({ initialRows, token, C }) {
+export default function QueueClient({ initialRows, C }) {
   const [rows, setRows] = useState(initialRows || []);
   // Per-row editable domain + transient busy/error state, keyed by row id.
   const [domains, setDomains] = useState(() =>
@@ -27,7 +27,7 @@ export default function QueueClient({ initialRows, token, C }) {
     }
     setBusy((b) => ({ ...b, [row.id]: true }));
     try {
-      const res = await fetch(`/api/queue/resolve?token=${encodeURIComponent(token || "")}`, {
+      const res = await fetch(`/api/queue/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: row.id, action, domain: domains[row.id] }),
