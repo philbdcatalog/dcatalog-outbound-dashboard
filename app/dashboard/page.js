@@ -1,5 +1,5 @@
 import { getDashboardData } from "../../lib/aggregates";
-import { DualBars, GroupedBars } from "./charts";
+import { TripleBars, GroupedBars } from "./charts";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -272,18 +272,17 @@ export default async function Dashboard() {
       </div>
 
       <div style={seclabel}>Meetings &amp; Opps Over Time</div>
-      <div style={panel}>
-        <DualBars
-          monthly={d.meetingsOverTime}
-          weekly={d.meetingsOverTimeWeekly}
-          totalKey="meetings"
-          subKey="opps"
-          totalColor={C.navy}
-          subColor={C.navyDeep}
-          legend={[{ label: "Meetings booked", color: C.navy }, { label: "Became opps", color: C.navyDeep }]}
-          C={C}
-        />
-      </div>
+      <TripleBars
+        quarterly={d.meetingsOverTimeQuarterly}
+        monthly={d.meetingsOverTime}
+        weekly={d.meetingsOverTimeWeekly}
+        totalKey="meetings"
+        subKey="opps"
+        totalColor={C.navy}
+        subColor={C.navyDeep}
+        legend={[{ label: "Meetings booked", color: C.navy }, { label: "Became opps", color: C.navyDeep }]}
+        C={C}
+      />
 
       <div style={seclabel}>By Campaign</div>
       <div style={panel}>
@@ -317,18 +316,17 @@ export default async function Dashboard() {
       </div>
 
       <div style={seclabel}>Accounts Contacted <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>total vs net-new</span></div>
-      <div style={panel}>
-        <DualBars
-          monthly={d.accountsContacted}
-          weekly={d.accountsContactedWeekly}
-          totalKey="total"
-          subKey="netNew"
-          totalColor={C.navy}
-          subColor={C.navyDeep}
-          legend={[{ label: "Accounts contacted", color: C.navy }, { label: "Net-new", color: C.navyDeep }]}
-          C={C}
-        />
-      </div>
+      <TripleBars
+        quarterly={d.accountsContactedQuarterly}
+        monthly={d.accountsContacted}
+        weekly={d.accountsContactedWeekly}
+        totalKey="total"
+        subKey="netNew"
+        totalColor={C.navy}
+        subColor={C.navyDeep}
+        legend={[{ label: "Accounts contacted", color: C.navy }, { label: "Net-new", color: C.navyDeep }]}
+        C={C}
+      />
 
       <div style={seclabel}>Deliverability &amp; Volume</div>
       <div style={panel}>

@@ -2,17 +2,26 @@
 // palette passed from the page so colors stay defined in one place.
 
 // Stacked bars matching the existing chart style. The lighter full bar is
-// `totalKey`; the darker overlay (a subset) is `subKey`. Renders an empty axis
-// gracefully when every value is 0.
+// `totalKey`; the darker overlay (a subset) is `subKey`. Uses a FIXED viewBox
+// width and distributes the bars across it, so a 4-bar card and a 12-bar card
+// render at the same visual scale (consistent fonts/heights) and few-bar cards
+// fill their width with wider bars instead of looking sparse. Renders an empty
+// axis gracefully when every value is 0.
 function Bars({ data, totalKey, subKey, totalColor, subColor, C }) {
   const n = data.length || 1;
   const max = Math.max(1, ...data.map((d) => d[totalKey] || 0));
-  const stepW = 46, barW = 26, top = 14, plotH = 110, baseY = top + plotH;
-  const W = n * stepW, H = baseY + 24;
+  const pad = 6, top = 16, plotH = 110, baseY = top + plotH;
+  const W = 300, H = baseY + 26;
+  const slotW = (W - pad * 2) / n;
+  const barW = Math.min(34, slotW * 0.6);
+  // When crowded (weekly, 12 bars), thin x-labels to every other — anchored on
+  // the most recent bar so the latest period always keeps its label.
+  const showLabel = (i) => n <= 8 || (n - 1 - i) % 2 === 0;
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxWidth: n * stepW }}>
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
       {data.map((d, i) => {
-        const x = i * stepW + (stepW - barW) / 2;
+        const cx = pad + slotW * (i + 0.5);
+        const x = cx - barW / 2;
         const tot = d[totalKey] || 0, sub = d[subKey] || 0;
         const th = (tot / max) * plotH, sh = (sub / max) * plotH;
         return (
@@ -20,9 +29,11 @@ function Bars({ data, totalKey, subKey, totalColor, subColor, C }) {
             <rect x={x} y={baseY - th} width={barW} height={th} fill={totalColor} rx={2} />
             <rect x={x} y={baseY - sh} width={barW} height={sh} fill={subColor} rx={2} />
             {tot > 0 && (
-              <text x={x + barW / 2} y={baseY - th - 4} textAnchor="middle" fontSize={10} fill={C.inkSoft}>{tot}</text>
+              <text x={cx} y={baseY - th - 4} textAnchor="middle" fontSize={10} fill={C.inkSoft}>{tot}</text>
             )}
-            <text x={x + barW / 2} y={baseY + 14} textAnchor="middle" fontSize={10} fill={C.muted}>{d.label}</text>
+            {showLabel(i) && (
+              <text x={cx} y={baseY + 14} textAnchor="middle" fontSize={9.5} fill={C.muted}>{d.label}</text>
+            )}
           </g>
         );
       })}
@@ -44,22 +55,33 @@ function Legend({ items, C }) {
   );
 }
 
-// Monthly and Weekly shown SIDE BY SIDE in one panel (monthly left, weekly
-// right), each with its own sub-label. Same series shape and colors.
-export function DualBars({ monthly, weekly, totalKey, subKey, totalColor, subColor, legend, C }) {
-  const subLabel = { fontSize: 11, fontWeight: 700, color: C.inkSoft, marginBottom: 4 };
-  const col = { flex: "1 1 48%", minWidth: 0 };
+// Quarterly | Monthly | Weekly shown as THREE separate equal white cards in a
+// row, each its own panel with a sub-label. Shared legend sits under the row.
+// Same series shape and colors across all three.
+export function TripleBars({ quarterly, monthly, weekly, totalKey, subKey, totalColor, subColor, legend, C }) {
+  const card = {
+    flex: "1 1 0",
+    minWidth: 0,
+    background: C.panel,
+    borderRadius: 12,
+    padding: 16,
+    boxShadow: "0 4px 16px rgba(31,42,68,.05)",
+  };
+  const subLabel = { fontSize: 11, fontWeight: 700, color: C.inkSoft, marginBottom: 8 };
+  const views = [
+    { label: "Quarterly", data: quarterly },
+    { label: "Monthly", data: monthly },
+    { label: "Weekly", data: weekly },
+  ];
   return (
     <div>
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-        <div style={col}>
-          <div style={subLabel}>Monthly</div>
-          <Bars data={monthly} totalKey={totalKey} subKey={subKey} totalColor={totalColor} subColor={subColor} C={C} />
-        </div>
-        <div style={col}>
-          <div style={subLabel}>Weekly</div>
-          <Bars data={weekly} totalKey={totalKey} subKey={subKey} totalColor={totalColor} subColor={subColor} C={C} />
-        </div>
+      <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+        {views.map((v) => (
+          <div key={v.label} style={card}>
+            <div style={subLabel}>{v.label}</div>
+            <Bars data={v.data} totalKey={totalKey} subKey={subKey} totalColor={totalColor} subColor={subColor} C={C} />
+          </div>
+        ))}
       </div>
       <Legend items={legend} C={C} />
     </div>
