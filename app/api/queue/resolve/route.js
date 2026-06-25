@@ -89,17 +89,36 @@ export async function POST(request) {
       );
       if (error) return Response.json({ ok: false, stage: "deal", error: error.message }, { status: 500 });
     } else if (row.kind === "meeting") {
+      // meetings.channel is a NOT NULL enum (email | linkedin | phone). Resolve
+      // it: prefer the user-picked channel, else derive from the account's last
+      // meaningful-touch channel. If neither is available, the UI must prompt.
+      const VALID_CHANNELS = ["email", "linkedin", "phone"];
+      const picked = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "";
+      const channel = picked || account.last_channel || null;
+
+      if (!channel) {
+        return Response.json(
+          { ok: false, error: "channel required for this meeting", code: "channel_required" },
+          { status: 400 }
+        );
+      }
+      if (!VALID_CHANNELS.includes(channel)) {
+        return Response.json(
+          { ok: false, error: `invalid channel '${channel}' (must be email, linkedin, or phone)` },
+          { status: 400 }
+        );
+      }
+
       const meeting = {
         account_id: account.id,
         domain,
+        channel,
         booked_at: row.occurred_at ?? null,
         is_outbound: true,
         source_tool: "zoho",
         external_id: row.zoho_id != null ? String(row.zoho_id) : null,
         raw: row.raw,
       };
-      // Channel = matched account's last meaningful-touch channel, if any.
-      if (account.last_channel) meeting.channel = account.last_channel;
       const { error } = await supabase
         .from("meetings")
         .upsert(meeting, { onConflict: "source_tool,external_id" });

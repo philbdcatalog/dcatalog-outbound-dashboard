@@ -14,6 +14,9 @@ export default function QueueClient({ initialRows, C }) {
   );
   const [busy, setBusy] = useState({});
   const [errors, setErrors] = useState({});
+  // Per-row channel pick (meetings only) + its own validation message.
+  const [channels, setChannels] = useState({});
+  const [chanErrors, setChanErrors] = useState({});
 
   const th = { textAlign: "left", fontSize: 11, fontWeight: 700, color: "#fff", background: C.navy, padding: "9px 12px" };
   const td = { padding: "9px 12px", borderBottom: `1px solid ${C.line}`, fontSize: 13 };
@@ -21,6 +24,7 @@ export default function QueueClient({ initialRows, C }) {
 
   async function resolve(row, action) {
     setErrors((e) => ({ ...e, [row.id]: null }));
+    setChanErrors((e) => ({ ...e, [row.id]: null }));
     if (action === "approve" && !(domains[row.id] || "").trim()) {
       setErrors((e) => ({ ...e, [row.id]: "Enter a domain first." }));
       return;
@@ -30,11 +34,18 @@ export default function QueueClient({ initialRows, C }) {
       const res = await fetch(`/api/queue/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: row.id, action, domain: domains[row.id] }),
+        // channel only matters for meeting approvals; the API ignores it for opps
+        // and derives from the account when left blank.
+        body: JSON.stringify({ id: row.id, action, domain: domains[row.id], channel: channels[row.id] || undefined }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
-        setErrors((e) => ({ ...e, [row.id]: json.error || `Failed (${res.status})` }));
+        if (json.code === "channel_required") {
+          // No derivable channel — make the user pick one.
+          setChanErrors((e) => ({ ...e, [row.id]: "Select a channel" }));
+        } else {
+          setErrors((e) => ({ ...e, [row.id]: json.error || `Failed (${res.status})` }));
+        }
         setBusy((b) => ({ ...b, [row.id]: false }));
         return;
       }
@@ -69,6 +80,7 @@ export default function QueueClient({ initialRows, C }) {
           <th style={{ ...th, textAlign: "right" }}>Amount</th>
           <th style={{ ...th, textAlign: "right" }}>Date</th>
           <th style={th}>Domain</th>
+          <th style={th}>Channel</th>
           <th style={{ ...th, textAlign: "right" }}>Action</th>
         </tr></thead>
         <tbody>
@@ -98,6 +110,35 @@ export default function QueueClient({ initialRows, C }) {
                   />
                   {errors[r.id] && (
                     <div style={{ color: "#e05a4d", fontSize: 11, marginTop: 3 }}>{errors[r.id]}</div>
+                  )}
+                </td>
+                <td style={td}>
+                  {isOpp ? (
+                    <span style={{ color: C.muted }}>—</span>
+                  ) : (
+                    <>
+                      <select
+                        value={channels[r.id] || ""}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setChannels((c) => ({ ...c, [r.id]: v }));
+                          setChanErrors((x) => ({ ...x, [r.id]: null }));
+                        }}
+                        disabled={disabled}
+                        style={{
+                          fontSize: 13, padding: "5px 8px", borderRadius: 6,
+                          border: `1px solid ${chanErrors[r.id] ? "#e05a4d" : C.line}`, outline: "none",
+                        }}
+                      >
+                        <option value="">(auto)</option>
+                        <option value="email">Email</option>
+                        <option value="linkedin">LinkedIn</option>
+                        <option value="phone">Phone</option>
+                      </select>
+                      {chanErrors[r.id] && (
+                        <div style={{ color: "#e05a4d", fontSize: 11, marginTop: 3 }}>{chanErrors[r.id]}</div>
+                      )}
+                    </>
                   )}
                 </td>
                 <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
