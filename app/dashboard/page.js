@@ -125,6 +125,7 @@ export default async function Dashboard() {
                 <span style={{ background: C.navy, color: "#fff", fontSize: 11, fontWeight: 700, borderRadius: 10, padding: "1px 8px", lineHeight: 1.6 }}>{d.reconPending}</span>
               )}
             </a>
+            <a href="/tam" style={{ color: C.navy, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>TAM</a>
             <a href="/api/logout" style={{ color: C.muted, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>Log out</a>
           </div>
         </div>
