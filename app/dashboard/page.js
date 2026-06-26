@@ -56,11 +56,12 @@ function RepAvatar({ name }) {
   );
 }
 
-// LEGACY speedometer gauge — kept intact for easy revert. To swap back, render
-// <LegacyGauge .../> instead of <ProgressRing .../> in "Output This Quarter".
-function LegacyGauge({ label, value, goal, display }) {
+// Speedometer gauge — DEFAULT KPI. 3 muted zones give an instant on-track read
+// (clay / amber / sage), thin arc + thin needle, Inter typography. The colors
+// are modern data-viz mutes, not primaries.
+function Gauge({ label, value, goal, display }) {
   const frac = goal > 0 ? Math.min(1, value / goal) : 0;
-  const r = 70, cx = 90, cy = 90;
+  const r = 72, cx = 90, cy = 92;
   const pt = (f, rad) => {
     const ang = Math.PI * (1 - f);
     return [cx + rad * Math.cos(ang), cy - rad * Math.sin(ang)];
@@ -69,18 +70,18 @@ function LegacyGauge({ label, value, goal, display }) {
     const [x0, y0] = pt(f0, r), [x1, y1] = pt(f1, r);
     return `M ${x0} ${y0} A ${r} ${r} 0 ${f1 - f0 > 0.5 ? 1 : 0} 1 ${x1} ${y1}`;
   };
-  const [nx, ny] = pt(frac, r - 16);
+  const [nx, ny] = pt(frac, r - 14);
   return (
-    <div style={{ background: C.panel, borderRadius: 12, padding: 18, textAlign: "center", boxShadow: "0 4px 16px rgba(31,42,68,.05)" }}>
-      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{label}</div>
-      <svg viewBox="0 0 180 120" width="100%" style={{ maxWidth: 220 }}>
-        <path d={arc(0, 0.42)} fill="none" stroke="#e05a4d" strokeWidth={12} />
-        <path d={arc(0.42, 0.62)} fill="none" stroke="#f2b134" strokeWidth={12} />
-        <path d={arc(0.62, 1)} fill="none" stroke="#3fa45e" strokeWidth={12} />
-        <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={C.ink} strokeWidth={3} strokeLinecap="round" />
-        <circle cx={cx} cy={cy} r={5} fill={C.ink} />
-        <text x={cx} y={cy - 14} textAnchor="middle" fontSize={26} fontWeight={700} fill={C.ink}>{display}</text>
-        <text x={cx} y={112} textAnchor="middle" fontSize={11} fill={C.muted}>
+    <div style={{ ...card, textAlign: "center" }}>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginBottom: 8 }}>{label}</div>
+      <svg viewBox="0 0 180 124" width="100%" style={{ maxWidth: 220 }}>
+        <path d={arc(0, 0.42)} fill="none" stroke="#e0796b" strokeWidth={8} strokeLinecap="round" />
+        <path d={arc(0.42, 0.62)} fill="none" stroke="#e8b04b" strokeWidth={8} />
+        <path d={arc(0.62, 1)} fill="none" stroke="#5fa777" strokeWidth={8} strokeLinecap="round" />
+        <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={C.ink} strokeWidth={2.5} strokeLinecap="round" />
+        <circle cx={cx} cy={cy} r={3.5} fill={C.ink} />
+        <text x={cx} y={cy - 16} textAnchor="middle" fontSize={27} fontWeight={700} fill={C.ink}>{display}</text>
+        <text x={cx} y={117} textAnchor="middle" fontSize={11.5} fill={C.muted}>
           Goal {goal >= 1000 ? "$" + Math.round(goal / 1000) + "K" : goal} · {Math.round(frac * 100)}%
         </text>
       </svg>
@@ -158,6 +159,7 @@ export default async function Dashboard() {
           )}
         </a>
         <a href="/tam" className="navlink">TAM</a>
+        <a href="/goals" className="navlink">Goals</a>
         <a href="/api/logout" className="navlink navlink--muted" style={{ marginLeft: "auto" }}>Log out</a>
       </nav>
 
@@ -169,9 +171,9 @@ export default async function Dashboard() {
 
       <div style={seclabel}>Output This Quarter</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
-        <ProgressRing label="Meetings Booked" value={f.meetings} goal={d.goals.meetings} display={fmt(f.meetings)} />
-        <ProgressRing label="Opportunities Created" value={f.opps} goal={d.goals.opps} display={fmt(f.opps)} />
-        <ProgressRing label="Pipeline Generated" value={d.pipeline} goal={d.goals.pipeline} display={"$" + Math.round(d.pipeline / 1000) + "K"} />
+        <Gauge label="Meetings Booked" value={f.meetings} goal={d.goals.meetings} display={fmt(f.meetings)} />
+        <Gauge label="Opportunities Created" value={f.opps} goal={d.goals.opps} display={fmt(f.opps)} />
+        <Gauge label="Pipeline Generated" value={d.pipeline} goal={d.goals.pipeline} display={"$" + Math.round(d.pipeline / 1000) + "K"} />
       </div>
 
       <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies, not contacts</span></div>
@@ -392,10 +394,28 @@ export default async function Dashboard() {
         </table>
       </div>
 
-      <div style={{ marginTop: 18, fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
+      <div style={seclabel}>Cost per Meeting by Channel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>this quarter · spend ÷ meetings</span></div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+        {d.costPerMeeting.map((c) => (
+          <div key={c.tool} style={card}>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, fontWeight: 600, color: C.ink }}>
+              <span style={{ width: 9, height: 9, borderRadius: 2, background: toolColor[c.tool] || C.ink, flexShrink: 0 }} />
+              {toolLabel(c.tool)}
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 700, color: C.ink, marginTop: 10 }}>
+              {c.cpm == null ? <span style={{ color: C.muted, fontSize: 18, fontWeight: 600 }}>no meetings yet</span> : "$" + Math.round(c.cpm).toLocaleString()}
+            </div>
+            <div style={{ fontSize: 12, color: C.muted, marginTop: 6 }}>
+              ${fmt(c.spend)} / qtr · {fmt(c.meetings)} {c.meetings === 1 ? "meeting" : "meetings"}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 20, fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
         Live from Supabase, recomputed on every load. Funnel counts unique accounts per stage.
         Replies, meetings, and wins are attributed to each account&apos;s last meaningful touch, so channel rows sum cleanly.
-        Cycle-time and cost &amp; efficiency sections are phase 2.
+        Goals and per-channel costs are set on the Goals tab.
       </div>
     </main>
   );

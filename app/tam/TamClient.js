@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { normalizeDomain } from "../../lib/ingest";
@@ -28,6 +28,8 @@ export default function TamClient({ C }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef(null);
 
   // Parse CSV -> normalized, domain-deduped rows + skipped count.
   function parseFile(f) {
@@ -114,27 +116,63 @@ export default function TamClient({ C }) {
         {radio("replace", "Replace entire TAM", "wipe all rows, then import this file")}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+      <div
+        onClick={() => !busy && inputRef.current?.click()}
+        onDragOver={(e) => { e.preventDefault(); if (!busy) setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (busy) return;
+          const f = e.dataTransfer.files?.[0];
+          if (f) { setFile(f); setResult(null); setError(null); }
+        }}
+        style={{
+          border: `1.5px dashed ${dragOver ? C.navy : C.line}`,
+          borderRadius: 12,
+          padding: "26px 20px",
+          textAlign: "center",
+          cursor: busy ? "default" : "pointer",
+          background: dragOver ? C.navyTint : "#fcfcfd",
+          transition: "border-color .15s ease, background .15s ease",
+        }}
+      >
         <input
+          ref={inputRef}
           type="file"
           accept=".csv,text/csv"
           disabled={busy}
           onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null); setError(null); }}
-          style={{ fontSize: 13 }}
+          style={{ display: "none" }}
         />
-        <button
-          type="button"
-          onClick={onUpload}
-          disabled={busy || !file}
-          style={{
-            fontSize: 13, fontWeight: 600, padding: "7px 14px", borderRadius: 8, border: "none",
-            background: busy || !file ? C.line : C.navy, color: busy || !file ? C.muted : "#fff",
-            cursor: busy || !file ? "default" : "pointer",
-          }}
-        >
-          {busy ? "Importing…" : "Import"}
-        </button>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={dragOver ? C.navy : C.muted} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: 6 }}>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        <div style={{ fontSize: 13.5, color: file ? C.ink : C.inkSoft, fontWeight: file ? 600 : 400 }}>
+          {file ? file.name : "Drag your TAM CSV here, or click to browse"}
+        </div>
+        {file && (
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 3 }}>
+            Ready to {mode === "replace" ? "replace" : "add to"} TAM
+          </div>
+        )}
       </div>
+
+      <button
+        type="button"
+        onClick={onUpload}
+        disabled={busy || !file}
+        className="btnish"
+        style={{
+          marginTop: 14, fontSize: 13, fontWeight: 600, padding: "9px 18px", borderRadius: 9, border: "none",
+          background: busy || !file ? C.line : C.navy, color: busy || !file ? C.muted : "#fff",
+          cursor: busy || !file ? "default" : "pointer",
+        }}
+      >
+        {busy ? "Importing…" : "Import"}
+      </button>
 
       {error && <div style={{ color: "#e05a4d", fontSize: 13, marginTop: 12 }}>{error}</div>}
       {result && (
