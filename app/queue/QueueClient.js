@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { SHADOW } from "../../lib/theme";
 
 const fmtDate = (s) =>
   s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "—";
@@ -29,8 +30,8 @@ export default function QueueClient({ initialRows, C }) {
   const [picks, setPicks] = useState({});
   const [chanErrors, setChanErrors] = useState({});
 
-  const th = { textAlign: "left", fontSize: 11, fontWeight: 700, color: "#fff", background: C.navy, padding: "9px 12px" };
-  const td = { padding: "9px 12px", borderBottom: `1px solid ${C.line}`, fontSize: 13 };
+  const th = { textAlign: "left", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: C.inkSoft, background: "#f4f6f9", padding: "11px 14px", borderBottom: `1px solid ${C.line}` };
+  const td = { padding: "12px 14px", borderBottom: `1px solid ${C.line}`, fontSize: 13, color: C.ink };
   const numTd = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
   async function resolve(row, action) {
@@ -77,7 +78,7 @@ export default function QueueClient({ initialRows, C }) {
 
   if (rows.length === 0) {
     return (
-      <div style={{ background: C.panel, borderRadius: 12, padding: 40, textAlign: "center", color: C.inkSoft, boxShadow: "0 4px 16px rgba(31,42,68,.05)" }}>
+      <div style={{ background: C.panel, borderRadius: 14, border: `1px solid ${C.line}`, padding: 40, textAlign: "center", color: C.inkSoft, boxShadow: SHADOW }}>
         <div style={{ fontSize: 22, marginBottom: 6 }}>🎉</div>
         Queue is clear — nothing pending review.
       </div>
@@ -85,7 +86,7 @@ export default function QueueClient({ initialRows, C }) {
   }
 
   return (
-    <div style={{ background: C.panel, borderRadius: 12, padding: 18, boxShadow: "0 4px 16px rgba(31,42,68,.05)", overflowX: "auto" }}>
+    <div style={{ background: C.panel, borderRadius: 14, border: `1px solid ${C.line}`, padding: 18, boxShadow: SHADOW, overflowX: "auto" }}>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead><tr>
           <th style={th}>Company</th>

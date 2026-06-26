@@ -1,9 +1,6 @@
-export const dynamic = "force-dynamic";
+import { C, SHADOW } from "../../lib/theme";
 
-const C = {
-  bg: "#eef1f8", panel: "#fff", inkSoft: "#5b6781", line: "#dfe4ef",
-  navy: "#3a4d8f", navyDeep: "#2c3a6b",
-};
+export const dynamic = "force-dynamic";
 
 function safeNext(next) {
   // Only allow relative same-site paths to avoid open-redirects.
@@ -20,10 +17,10 @@ export default function LoginPage({ searchParams }) {
       <form
         action="/api/login"
         method="POST"
-        style={{ background: C.panel, borderRadius: 12, padding: 28, width: 320, boxShadow: "0 4px 16px rgba(31,42,68,.08)" }}
+        style={{ background: C.panel, borderRadius: 14, border: `1px solid ${C.line}`, padding: 30, width: 330, boxShadow: SHADOW }}
       >
-        <h1 style={{ color: C.navy, fontSize: 22, fontWeight: 600, margin: "0 0 4px" }}>Outbound Dashboard</h1>
-        <div style={{ color: C.inkSoft, fontSize: 13, marginBottom: 16 }}>Enter the team password to continue.</div>
+        <h1 style={{ color: C.ink, fontSize: 22, fontWeight: 600, letterSpacing: -0.2, margin: "0 0 4px" }}>Outbound Dashboard</h1>
+        <div style={{ color: C.inkSoft, fontSize: 13.5, marginBottom: 18 }}>Enter the team password to continue.</div>
 
         <input type="hidden" name="next" value={next} />
         <input
@@ -32,13 +29,14 @@ export default function LoginPage({ searchParams }) {
           autoFocus
           required
           placeholder="Password"
-          style={{ width: "100%", boxSizing: "border-box", fontSize: 14, padding: "9px 11px", borderRadius: 8, border: `1px solid ${C.line}`, outline: "none" }}
+          style={{ width: "100%", boxSizing: "border-box", fontSize: 14, padding: "10px 12px", borderRadius: 9, border: `1px solid ${C.line}`, outline: "none", background: "#fcfcfd" }}
         />
         {error && <div style={{ color: "#e05a4d", fontSize: 12, marginTop: 8 }}>Incorrect password</div>}
 
         <button
           type="submit"
-          style={{ width: "100%", marginTop: 14, background: C.navy, color: "#fff", fontSize: 14, fontWeight: 600, padding: "10px 0", borderRadius: 8, border: "none", cursor: "pointer" }}
+          className="btnish"
+          style={{ width: "100%", marginTop: 16, background: C.navy, color: "#fff", fontSize: 14, fontWeight: 600, padding: "11px 0", borderRadius: 9, border: "none", cursor: "pointer" }}
         >
           Log in
         </button>

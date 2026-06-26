@@ -1,15 +1,10 @@
 import { getServiceClient } from "../../lib/supabase";
 import QueueClient from "./QueueClient";
+import { C, SHADOW } from "../../lib/theme";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
-
-const C = {
-  bg: "#eef1f8", panel: "#fff", ink: "#1f2a44", inkSoft: "#5b6781",
-  muted: "#8a93a8", line: "#eef1f6", navy: "#3a4d8f", navyDeep: "#2c3a6b",
-  linkedin: "#2a9d8f", green: "#2f9e5e",
-};
 
 async function getPending() {
   try {
@@ -31,25 +26,25 @@ export default async function QueuePage() {
 
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
         <div>
-          <h1 style={{ fontSize: 30, fontWeight: 600, color: C.navy }}>Reconciliation Queue</h1>
-          <div style={{ color: C.inkSoft, fontSize: 13 }}>
+          <a href="/dashboard" className="navlink navlink--muted" style={{ marginLeft: -12, marginBottom: 4 }}>← Back to dashboard</a>
+          <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: "2px 0 0" }}>Reconciliation Queue</h1>
+          <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>
             Zoho records that couldn&apos;t be auto-matched to an account · approve to graduate into outbound, or reject.
           </div>
-          <a href="/dashboard" style={{ color: C.navy, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>← Back to dashboard</a>
         </div>
         {res.ok && (
-          <div style={{ background: C.navyDeep, color: "#fff", borderRadius: 8, padding: "8px 16px", textAlign: "right" }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{res.rows.length} pending</div>
-            <div style={{ fontSize: 11, opacity: 0.78 }}>status = pending</div>
+          <div style={{ background: C.navy, color: "#fff", borderRadius: 10, padding: "9px 16px", textAlign: "right", boxShadow: SHADOW }}>
+            <div style={{ fontWeight: 600, fontSize: 13.5 }}>{res.rows.length} pending</div>
+            <div style={{ fontSize: 11, opacity: 0.75, marginTop: 1 }}>status = pending</div>
           </div>
         )}
       </div>
 
-      <div style={{ marginTop: 16 }}>
+      <div style={{ marginTop: 18 }}>
         {!res.ok ? (
-          <div style={{ background: C.panel, borderRadius: 12, padding: 18, color: "#e05a4d", fontSize: 13, boxShadow: "0 4px 16px rgba(31,42,68,.05)" }}>
+          <div style={{ background: C.panel, borderRadius: 14, border: `1px solid ${C.line}`, padding: 20, color: "#e05a4d", fontSize: 13, boxShadow: SHADOW }}>
             Could not load the queue: {res.error}
           </div>
         ) : (

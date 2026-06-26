@@ -1,16 +1,11 @@
 import { getDashboardData } from "../../lib/aggregates";
 import { TripleBars, MetricByToolCards } from "./charts";
+import { C, card, eyebrow, SHADOW } from "../../lib/theme";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
-const C = {
-  bg: "#eef1f8", panel: "#fff", ink: "#1f2a44", inkSoft: "#5b6781",
-  muted: "#8a93a8", line: "#eef1f6", navy: "#3a4d8f", navyDeep: "#2c3a6b",
-  email: "#2f4ba0", linkedin: "#2a9d8f", phone: "#c4773a", green: "#2f9e5e",
-  lemlist: "#7a5cc0", highlight: "#e8f4ec",
-};
 const fmt = (n) => (n ?? 0).toLocaleString();
 const pct = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(2) + "%" : "–");
 const fmtDate = (s) =>
@@ -61,7 +56,9 @@ function RepAvatar({ name }) {
   );
 }
 
-function Gauge({ label, value, goal, display }) {
+// LEGACY speedometer gauge — kept intact for easy revert. To swap back, render
+// <LegacyGauge .../> instead of <ProgressRing .../> in "Output This Quarter".
+function LegacyGauge({ label, value, goal, display }) {
   const frac = goal > 0 ? Math.min(1, value / goal) : 0;
   const r = 70, cx = 90, cy = 90;
   const pt = (f, rad) => {
@@ -91,6 +88,31 @@ function Gauge({ label, value, goal, display }) {
   );
 }
 
+// NEW default KPI: a clean circular progress ring — a single navy arc filling
+// proportionally toward the goal on a light gray track, big value centered,
+// "Goal N · X%" below. Calm, scannable, no red/yellow/green.
+function ProgressRing({ label, value, goal, display }) {
+  const frac = goal > 0 ? Math.min(1, value / goal) : 0;
+  const size = 128, stroke = 11, r = (size - stroke) / 2, cx = size / 2, cy = size / 2;
+  const circ = 2 * Math.PI * r;
+  const dash = circ * frac;
+  const goalLabel = goal >= 1000 ? "$" + Math.round(goal / 1000) + "K" : goal;
+  return (
+    <div style={{ ...card, textAlign: "center" }}>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginBottom: 14 }}>{label}</div>
+      <svg viewBox={`0 0 ${size} ${size}`} width="128" height="128" style={{ maxWidth: 148 }}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke={C.line} strokeWidth={stroke} />
+        <circle
+          cx={cx} cy={cy} r={r} fill="none" stroke={C.navy} strokeWidth={stroke} strokeLinecap="round"
+          strokeDasharray={`${dash} ${circ - dash}`} transform={`rotate(-90 ${cx} ${cy})`}
+        />
+        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={30} fontWeight={700} fill={C.ink}>{display}</text>
+      </svg>
+      <div style={{ fontSize: 12, color: C.muted, marginTop: 12 }}>Goal {goalLabel} · {Math.round(frac * 100)}%</div>
+    </div>
+  );
+}
+
 export default async function Dashboard() {
   const d = await getDashboardData();
 
@@ -104,36 +126,40 @@ export default async function Dashboard() {
   }
 
   const f = d.funnel;
-  const seclabel = { textTransform: "uppercase", fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, margin: "18px 2px 8px" };
-  const panel = { background: C.panel, borderRadius: 12, padding: 18, boxShadow: "0 4px 16px rgba(31,42,68,.05)" };
-  const th = { textAlign: "left", fontSize: 11, fontWeight: 700, color: "#fff", background: C.navy, padding: "9px 12px" };
-  const td = { padding: "9px 12px", borderBottom: `1px solid ${C.line}` };
+  const seclabel = eyebrow;
+  const panel = card;
+  // Lighter table header: soft gray bg + navy-ish text + thin bottom border
+  // (no heavy solid-navy bar). Used by every table for a consistent reskin.
+  const th = { textAlign: "left", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: C.inkSoft, background: "#f4f6f9", padding: "11px 14px", borderBottom: `1px solid ${C.line}` };
+  const td = { padding: "12px 14px", borderBottom: `1px solid ${C.line}`, color: C.ink };
   const numTd = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
   const isEmpty = d.totals.touches === 0;
 
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
         <div>
-          <h1 style={{ fontSize: 30, fontWeight: 600, color: C.navy }}>Outbound Dashboard</h1>
-          <div style={{ color: C.inkSoft, fontSize: 13 }}>Multi-channel and account-based · Instantly, HeyReach, JustCall, Lemlist</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 8 }}>
-            <a href="/queue" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: C.navy, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
-              Reconciliation Queue
-              {d.reconPending > 0 && (
-                <span style={{ background: C.navy, color: "#fff", fontSize: 11, fontWeight: 700, borderRadius: 10, padding: "1px 8px", lineHeight: 1.6 }}>{d.reconPending}</span>
-              )}
-            </a>
-            <a href="/tam" style={{ color: C.navy, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>TAM</a>
-            <a href="/api/logout" style={{ color: C.muted, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>Log out</a>
-          </div>
+          <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: 0 }}>Outbound Dashboard</h1>
+          <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>Multi-channel and account-based · Instantly, HeyReach, JustCall, Lemlist</div>
         </div>
-        <div style={{ background: C.navyDeep, color: "#fff", borderRadius: 8, padding: "8px 16px", textAlign: "right" }}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>Q2 2026 · Apr – Jun</div>
-          <div style={{ fontSize: 11, opacity: 0.78 }}>Live · outbound-sourced only</div>
+        <div style={{ background: C.navy, color: "#fff", borderRadius: 10, padding: "9px 16px", textAlign: "right", boxShadow: SHADOW }}>
+          <div style={{ fontWeight: 600, fontSize: 13.5 }}>Q2 2026 · Apr – Jun</div>
+          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 1 }}>Live · outbound-sourced only</div>
         </div>
       </div>
+
+      <nav style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 16, paddingBottom: 12, borderBottom: `1px solid ${C.line}` }}>
+        <a href="/dashboard" className="navlink navlink--active">Dashboard</a>
+        <a href="/queue" className="navlink">
+          Reconciliation Queue
+          {d.reconPending > 0 && (
+            <span style={{ marginLeft: 7, background: C.navyTint, color: C.navy, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "2px 8px", lineHeight: 1.5 }}>{d.reconPending}</span>
+          )}
+        </a>
+        <a href="/tam" className="navlink">TAM</a>
+        <a href="/api/logout" className="navlink navlink--muted" style={{ marginLeft: "auto" }}>Log out</a>
+      </nav>
 
       {isEmpty && (
         <div style={{ ...panel, marginTop: 16, borderLeft: `3px solid ${C.amber || "#f2b134"}`, color: C.inkSoft, fontSize: 13 }}>
@@ -143,9 +169,9 @@ export default async function Dashboard() {
 
       <div style={seclabel}>Output This Quarter</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
-        <Gauge label="Meetings Booked" value={f.meetings} goal={d.goals.meetings} display={fmt(f.meetings)} />
-        <Gauge label="Opportunities Created" value={f.opps} goal={d.goals.opps} display={fmt(f.opps)} />
-        <Gauge label="Pipeline Generated" value={d.pipeline} goal={d.goals.pipeline} display={"$" + Math.round(d.pipeline / 1000) + "K"} />
+        <ProgressRing label="Meetings Booked" value={f.meetings} goal={d.goals.meetings} display={fmt(f.meetings)} />
+        <ProgressRing label="Opportunities Created" value={f.opps} goal={d.goals.opps} display={fmt(f.opps)} />
+        <ProgressRing label="Pipeline Generated" value={d.pipeline} goal={d.goals.pipeline} display={"$" + Math.round(d.pipeline / 1000) + "K"} />
       </div>
 
       <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies, not contacts</span></div>
@@ -166,10 +192,10 @@ export default async function Dashboard() {
               ["Won", f.won, f.opps],
             ].map(([name, val, prev], i) => (
               <tr key={name}>
-                <td style={td}>{name}</td>
-                <td style={{ ...numTd, fontSize: 17, fontWeight: 700 }}>{fmt(val)}</td>
-                <td style={{ ...numTd, fontStyle: "italic", color: C.inkSoft }}>{pct(val, f.contacted)}</td>
-                <td style={{ ...numTd, fontStyle: "italic", color: C.inkSoft }}>{i === 0 ? "–" : pct(val, prev)}</td>
+                <td style={{ ...td, fontWeight: 500 }}>{name}</td>
+                <td style={{ ...numTd, fontSize: 18, fontWeight: 700, color: C.ink }}>{fmt(val)}</td>
+                <td style={{ ...numTd, color: C.inkSoft }}>{pct(val, f.contacted)}</td>
+                <td style={{ ...numTd, color: C.muted }}>{i === 0 ? "–" : pct(val, prev)}</td>
               </tr>
             ))}
           </tbody>

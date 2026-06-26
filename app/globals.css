@@ -1,0 +1,41 @@
+:root {
+  --navy: #33457c;
+  --navy-tint: #eef1f8;
+  --muted: #8a93a8;
+  --line: #e8ebf0;
+}
+
+/* Header nav links — spaced, padded, subtle hover + active state. */
+.navlink {
+  color: var(--navy);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 9px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.navlink:hover {
+  background: var(--navy-tint);
+}
+.navlink--active {
+  background: var(--navy-tint);
+}
+.navlink--muted {
+  color: var(--muted);
+}
+.navlink--muted:hover {
+  background: #f0f1f4;
+  color: #566074;
+}
+
+/* Buttons / link-buttons — gentle transition. */
+.btnish {
+  transition: background 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+.btnish:hover {
+  opacity: 0.92;
+}

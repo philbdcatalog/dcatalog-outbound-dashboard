@@ -1,5 +1,6 @@
 // Inline SVG chart components, server-rendered (no client state). `C` is the
 // palette passed from the page so colors stay defined in one place.
+import { SHADOW, RADIUS } from "../../lib/theme";
 
 // Stacked bars matching the existing chart style. The lighter full bar is
 // `totalKey`; the darker overlay (a subset) is `subKey`. Uses a FIXED viewBox
@@ -63,9 +64,10 @@ export function TripleBars({ quarterly, monthly, weekly, totalKey, subKey, total
     flex: "1 1 0",
     minWidth: 0,
     background: C.panel,
-    borderRadius: 12,
-    padding: 16,
-    boxShadow: "0 4px 16px rgba(31,42,68,.05)",
+    borderRadius: RADIUS,
+    border: `1px solid ${C.line}`,
+    padding: 18,
+    boxShadow: SHADOW,
   };
   const subLabel = { fontSize: 11, fontWeight: 700, color: C.inkSoft, marginBottom: 8 };
   const views = [
@@ -134,9 +136,10 @@ export function MetricByToolCards({ data, toolColor, toolShortLabel, C }) {
     flex: "1 1 0",
     minWidth: 0,
     background: C.panel,
-    borderRadius: 12,
-    padding: 16,
-    boxShadow: "0 4px 16px rgba(31,42,68,.05)",
+    borderRadius: RADIUS,
+    border: `1px solid ${C.line}`,
+    padding: 18,
+    boxShadow: SHADOW,
   };
   const subLabel = { fontSize: 11, fontWeight: 700, color: C.inkSoft, marginBottom: 8 };
   return (

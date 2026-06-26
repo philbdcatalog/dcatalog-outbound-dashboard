@@ -1,19 +1,14 @@
 import { getServiceClient } from "../../lib/supabase";
 import TamClient from "./TamClient";
+import { C, card, SHADOW } from "../../lib/theme";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
-const C = {
-  bg: "#eef1f8", panel: "#fff", ink: "#1f2a44", inkSoft: "#5b6781",
-  muted: "#8a93a8", line: "#eef1f6", navy: "#3a4d8f", navyDeep: "#2c3a6b",
-  green: "#2f9e5e",
-};
-
 // Consistent per-industry colors, shared by the donut and the penetration bars.
 const INDUSTRY_COLORS = {
-  manufacturer: "#3a4d8f",            // navy
+  manufacturer: "#33457c",            // navy
   "wholesale/distributor": "#2a9d8f", // teal
   retail: "#c4773a",                  // orange
   furniture: "#7a5cc0",               // purple
@@ -98,8 +93,8 @@ async function getTam() {
 function StatCard({ label, count, total, headlinePct }) {
   const filled = Math.min(100, pctNum(count, total));
   return (
-    <div style={{ background: C.panel, borderRadius: 12, padding: 18, boxShadow: "0 4px 16px rgba(31,42,68,.05)" }}>
-      <div style={{ textTransform: "uppercase", fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.inkSoft }}>{label}</div>
+    <div style={card}>
+      <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted }}>{label}</div>
       {headlinePct ? (
         <>
           <div style={{ fontSize: 34, fontWeight: 700, color: C.navy, marginTop: 6 }}>{pctStr(count, total)}</div>
@@ -195,19 +190,19 @@ function PenetrationBars({ byIndustry }) {
 export default async function TamPage() {
   const m = await getTam();
 
-  const seclabel = { textTransform: "uppercase", fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.inkSoft, margin: "18px 2px 8px" };
-  const panel = { background: C.panel, borderRadius: 12, padding: 18, boxShadow: "0 4px 16px rgba(31,42,68,.05)" };
-  const th = { textAlign: "left", fontSize: 11, fontWeight: 700, color: "#fff", background: C.navy, padding: "9px 12px" };
-  const td = { padding: "9px 12px", borderBottom: `1px solid ${C.line}`, fontSize: 13 };
+  const seclabel = { textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted, margin: "22px 2px 10px" };
+  const panel = card;
+  const th = { textAlign: "left", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: C.inkSoft, background: "#f4f6f9", padding: "11px 14px", borderBottom: `1px solid ${C.line}` };
+  const td = { padding: "12px 14px", borderBottom: `1px solid ${C.line}`, fontSize: 13, color: C.ink };
   const numTd = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
         <div>
-          <h1 style={{ fontSize: 30, fontWeight: 600, color: C.navy }}>Total Addressable Market</h1>
-          <div style={{ color: C.inkSoft, fontSize: 13 }}>Market penetration across your TAM · lifetime, matched by company domain.</div>
-          <a href="/dashboard" style={{ color: C.navy, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>← Back to dashboard</a>
+          <a href="/dashboard" className="navlink navlink--muted" style={{ marginLeft: -12, marginBottom: 4 }}>← Back to dashboard</a>
+          <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: "2px 0 0" }}>Total Addressable Market</h1>
+          <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>Market penetration across your TAM · lifetime, matched by company domain.</div>
         </div>
       </div>
 
@@ -240,11 +235,12 @@ export default async function TamPage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "18px 2px 8px" }}>
-            <div style={{ textTransform: "uppercase", fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.inkSoft }}>Industry Breakdown</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "22px 2px 10px" }}>
+            <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted }}>Industry Breakdown</div>
             <a
               href="/api/tam/export"
-              style={{ background: C.navy, color: "#fff", fontSize: 12, fontWeight: 600, padding: "7px 12px", borderRadius: 8, textDecoration: "none" }}
+              className="btnish"
+              style={{ background: C.navy, color: "#fff", fontSize: 12, fontWeight: 600, padding: "8px 14px", borderRadius: 9, textDecoration: "none", boxShadow: SHADOW }}
             >
               Export Uncontacted Targets (CSV)
             </a>

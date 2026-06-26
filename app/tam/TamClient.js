@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { normalizeDomain } from "../../lib/ingest";
+import { SHADOW } from "../../lib/theme";
 
 // Parse a possibly-formatted integer ("$1,200,000", "1,500", "") -> int | null.
 function toInt(v) {
@@ -105,7 +106,7 @@ export default function TamClient({ C }) {
   );
 
   return (
-    <div style={{ background: C.panel, borderRadius: 12, padding: 18, boxShadow: "0 4px 16px rgba(31,42,68,.05)" }}>
+    <div style={{ background: C.panel, borderRadius: 14, border: `1px solid ${C.line}`, padding: 20, boxShadow: SHADOW }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: C.navy, marginBottom: 12 }}>Upload TAM CSV</div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
