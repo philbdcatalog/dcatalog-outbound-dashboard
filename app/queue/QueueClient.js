@@ -127,32 +127,26 @@ export default function QueueClient({ initialRows, C }) {
                   )}
                 </td>
                 <td style={td}>
-                  {isOpp ? (
-                    <span style={{ color: C.muted }}>—</span>
-                  ) : (
-                    <>
-                      <select
-                        value={picks[r.id] || ""}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setPicks((c) => ({ ...c, [r.id]: v }));
-                          setChanErrors((x) => ({ ...x, [r.id]: null }));
-                        }}
-                        disabled={disabled}
-                        style={{
-                          fontSize: 13, padding: "5px 8px", borderRadius: 6,
-                          border: `1px solid ${chanErrors[r.id] ? "#e05a4d" : C.line}`, outline: "none",
-                        }}
-                      >
-                        <option value="">(auto)</option>
-                        {TOOL_OPTIONS.map((o) => (
-                          <option key={o.tool} value={o.tool}>{o.label}</option>
-                        ))}
-                      </select>
-                      {chanErrors[r.id] && (
-                        <div style={{ color: "#e05a4d", fontSize: 11, marginTop: 3 }}>{chanErrors[r.id]}</div>
-                      )}
-                    </>
+                  <select
+                    value={picks[r.id] || ""}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setPicks((c) => ({ ...c, [r.id]: v }));
+                      setChanErrors((x) => ({ ...x, [r.id]: null }));
+                    }}
+                    disabled={disabled}
+                    style={{
+                      fontSize: 13, padding: "5px 8px", borderRadius: 6,
+                      border: `1px solid ${chanErrors[r.id] ? "#e05a4d" : C.line}`, outline: "none",
+                    }}
+                  >
+                    <option value="">(auto)</option>
+                    {TOOL_OPTIONS.map((o) => (
+                      <option key={o.tool} value={o.tool}>{o.label}</option>
+                    ))}
+                  </select>
+                  {chanErrors[r.id] && (
+                    <div style={{ color: "#e05a4d", fontSize: 11, marginTop: 3 }}>{chanErrors[r.id]}</div>
                   )}
                 </td>
                 <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>

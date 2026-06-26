@@ -73,6 +73,19 @@ export async function POST(request) {
     }
 
     if (row.kind === "deal") {
+      // Opp rows carry the same optional tool+channel pair as meetings. deals.tool
+      // and deals.channel are both nullable, so "(auto)" stores null on each and
+      // aggregates falls back to account-derived attribution.
+      const VALID_CHANNELS = ["email", "linkedin", "phone", "multi-channel"];
+      const VALID_TOOLS = ["instantly", "heyreach", "justcall", "lemlist"];
+      const dealTool = typeof body.tool === "string" ? body.tool.trim().toLowerCase() : "";
+      const dealChannel = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "";
+      if (dealTool && !VALID_TOOLS.includes(dealTool)) {
+        return Response.json({ ok: false, error: `invalid tool '${dealTool}' (must be instantly, heyreach, justcall, or lemlist)` }, { status: 400 });
+      }
+      if (dealChannel && !VALID_CHANNELS.includes(dealChannel)) {
+        return Response.json({ ok: false, error: `invalid channel '${dealChannel}' (must be email, linkedin, phone, or multi-channel)` }, { status: 400 });
+      }
       const { error } = await supabase.from("deals").upsert(
         {
           zoho_deal_id: row.zoho_id,
@@ -83,6 +96,8 @@ export async function POST(request) {
           amount: row.amount ?? null,
           closed_at: row.occurred_at ?? null,
           is_outbound: true,
+          tool: dealTool || null,
+          channel: dealChannel || null,
           raw: row.raw,
         },
         { onConflict: "zoho_deal_id" }

@@ -30,6 +30,7 @@ const toolShortLabel = (t) =>
 const REP_PHOTOS = {
   "Traci Vrana": "/reps/traci.jpg",
   "Phil Benavides": "/reps/phil.jpg",
+  "Jonathan Marin": "/reps/jonathan.jpg",
 };
 
 // Small circular avatar for the By Rep table. Falls back to an initials circle
