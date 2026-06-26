@@ -6,6 +6,16 @@ const fmtDate = (s) =>
   s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "—";
 const fmtMoney = (n) => (n == null ? "—" : "$" + Number(n).toLocaleString());
 
+// Meeting graduation picker: each option is a tool+channel pair. The dropdown
+// value is the tool; the channel is derived from this map.
+const TOOL_OPTIONS = [
+  { tool: "instantly", label: "Email (Instantly)" },
+  { tool: "heyreach", label: "LinkedIn (HeyReach)" },
+  { tool: "justcall", label: "Calling (JustCall)" },
+  { tool: "lemlist", label: "Multi-channel (Lemlist)" },
+];
+const TOOL_TO_CHANNEL = { instantly: "email", heyreach: "linkedin", justcall: "phone", lemlist: "multi-channel" };
+
 export default function QueueClient({ initialRows, C }) {
   const [rows, setRows] = useState(initialRows || []);
   // Per-row editable domain + transient busy/error state, keyed by row id.
@@ -14,8 +24,9 @@ export default function QueueClient({ initialRows, C }) {
   );
   const [busy, setBusy] = useState({});
   const [errors, setErrors] = useState({});
-  // Per-row channel pick (meetings only) + its own validation message.
-  const [channels, setChannels] = useState({});
+  // Per-row tool pick (meetings only; value is the tool, channel derived from
+  // TOOL_TO_CHANNEL) + its own validation message.
+  const [picks, setPicks] = useState({});
   const [chanErrors, setChanErrors] = useState({});
 
   const th = { textAlign: "left", fontSize: 11, fontWeight: 700, color: "#fff", background: C.navy, padding: "9px 12px" };
@@ -31,12 +42,14 @@ export default function QueueClient({ initialRows, C }) {
     }
     setBusy((b) => ({ ...b, [row.id]: true }));
     try {
+      // tool+channel only matter for meeting approvals; the API ignores them for
+      // opps and derives from the account when "(auto)" is left selected.
+      const pickedTool = picks[row.id] || undefined;
+      const pickedChannel = pickedTool ? TOOL_TO_CHANNEL[pickedTool] : undefined;
       const res = await fetch(`/api/queue/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // channel only matters for meeting approvals; the API ignores it for opps
-        // and derives from the account when left blank.
-        body: JSON.stringify({ id: row.id, action, domain: domains[row.id], channel: channels[row.id] || undefined }),
+        body: JSON.stringify({ id: row.id, action, domain: domains[row.id], tool: pickedTool, channel: pickedChannel }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
@@ -118,10 +131,10 @@ export default function QueueClient({ initialRows, C }) {
                   ) : (
                     <>
                       <select
-                        value={channels[r.id] || ""}
+                        value={picks[r.id] || ""}
                         onChange={(e) => {
                           const v = e.target.value;
-                          setChannels((c) => ({ ...c, [r.id]: v }));
+                          setPicks((c) => ({ ...c, [r.id]: v }));
                           setChanErrors((x) => ({ ...x, [r.id]: null }));
                         }}
                         disabled={disabled}
@@ -131,10 +144,9 @@ export default function QueueClient({ initialRows, C }) {
                         }}
                       >
                         <option value="">(auto)</option>
-                        <option value="email">Email</option>
-                        <option value="linkedin">LinkedIn</option>
-                        <option value="phone">Phone</option>
-                        <option value="multi-channel">Multi-channel</option>
+                        {TOOL_OPTIONS.map((o) => (
+                          <option key={o.tool} value={o.tool}>{o.label}</option>
+                        ))}
                       </select>
                       {chanErrors[r.id] && (
                         <div style={{ color: "#e05a4d", fontSize: 11, marginTop: 3 }}>{chanErrors[r.id]}</div>

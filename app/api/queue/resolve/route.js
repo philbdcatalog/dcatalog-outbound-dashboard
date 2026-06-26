@@ -89,12 +89,19 @@ export async function POST(request) {
       );
       if (error) return Response.json({ ok: false, stage: "deal", error: error.message }, { status: 500 });
     } else if (row.kind === "meeting") {
-      // meetings.channel is a NOT NULL enum (email | linkedin | phone). Resolve
-      // it: prefer the user-picked channel, else derive from the account's last
-      // meaningful-touch channel. If neither is available, the UI must prompt.
+      // The queue picker sends a tool+channel pair (e.g. instantly/email). We
+      // store BOTH on the meeting so the By Tool/By Channel breakdowns attribute
+      // it correctly even on accounts with no touch history. "(auto)" sends
+      // neither: channel is derived from the account's last meaningful-touch
+      // channel and tool is left null (aggregates then falls back to the
+      // account-derived tool). channel is a NOT NULL enum; tool is nullable.
       const VALID_CHANNELS = ["email", "linkedin", "phone", "multi-channel"];
-      const picked = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "";
-      const channel = picked || account.last_channel || null;
+      const VALID_TOOLS = ["instantly", "heyreach", "justcall", "lemlist"];
+      const pickedChannel = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "";
+      const pickedTool = typeof body.tool === "string" ? body.tool.trim().toLowerCase() : "";
+
+      const channel = pickedChannel || account.last_channel || null;
+      const tool = pickedTool || null;
 
       if (!channel) {
         return Response.json(
@@ -108,11 +115,18 @@ export async function POST(request) {
           { status: 400 }
         );
       }
+      if (tool && !VALID_TOOLS.includes(tool)) {
+        return Response.json(
+          { ok: false, error: `invalid tool '${tool}' (must be instantly, heyreach, justcall, or lemlist)` },
+          { status: 400 }
+        );
+      }
 
       const meeting = {
         account_id: account.id,
         domain,
         channel,
+        tool, // null for "(auto)" — aggregates falls back to touch-derived tool
         booked_at: row.occurred_at ?? null,
         is_outbound: true,
         source_tool: "zoho",
