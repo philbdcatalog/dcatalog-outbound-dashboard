@@ -1,20 +1,13 @@
 import { getServiceClient } from "../../lib/supabase";
 import TamClient from "./TamClient";
+import ClientUpload from "./ClientUpload";
+import TamSegments from "./TamSegments";
 import { C, card, SHADOW } from "../../lib/theme";
+import { verticalBucket } from "../../lib/verticals";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
-
-// Consistent per-industry colors, shared by the donut and the penetration bars.
-const INDUSTRY_COLORS = {
-  manufacturer: "#33457c",            // navy
-  "wholesale/distributor": "#2a9d8f", // teal
-  retail: "#c4773a",                  // orange
-  furniture: "#7a5cc0",               // purple
-};
-const FALLBACK = ["#8a93a8", "#5b6781", "#2c3a6b", "#2f9e5e", "#b0567f"];
-const colorForIndustry = (key, i) => INDUSTRY_COLORS[key] || FALLBACK[i % FALLBACK.length];
 
 const fmt = (n) => (n ?? 0).toLocaleString();
 const pctStr = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(1) + "%" : "–");
@@ -35,17 +28,31 @@ async function distinctDomains(supabase, table, filter) {
   return set;
 }
 
-// All tam_companies (domain + industry), paginated past the 1000 cap.
+// All tam_companies (domain + industry + vertical), paginated past the 1000 cap.
 async function loadTamRows(supabase) {
   const rows = [];
   const size = 1000;
   for (let from = 0; ; from += size) {
-    const { data, error } = await supabase.from("tam_companies").select("domain, industry").range(from, from + size - 1);
+    const { data, error } = await supabase
+      .from("tam_companies")
+      .select("domain, industry, vertical")
+      .range(from, from + size - 1);
     if (error) throw error;
     rows.push(...(data || []));
     if (!data || data.length < size) break;
   }
   return rows;
+}
+
+// Tally one TAM row into a segment map keyed by industry or vertical.
+function tally(map, key, label, f) {
+  let e = map.get(key);
+  if (!e) { e = { key, label, tam: 0, contacted: 0, meetings: 0, wins: 0, clients: 0 }; map.set(key, e); }
+  e.tam++;
+  if (f.c) e.contacted++;
+  if (f.m) e.meetings++;
+  if (f.w) e.wins++;
+  if (f.cl) e.clients++;
 }
 
 async function getTam() {
@@ -57,24 +64,51 @@ async function getTam() {
     const contactedDomains = await distinctDomains(supabase, "touch_events");
     const meetingDomains = await distinctDomains(supabase, "meetings");
     const wonDomains = await distinctDomains(supabase, "deals", (q) => q.eq("stage", "won"));
+    const clientDomains = await distinctDomains(supabase, "clients");
 
-    let contacted = 0, meetings = 0, wins = 0;
-    const indMap = new Map(); // key -> { key, label, tam, contacted, meetings, wins }
+    // Per-TAM-row status precedence (locked): Client > Won > Meeting > Contacted
+    // > Untouched. Clients are a SEPARATE FOOTPRINT LAYER: the funnel counts
+    // (contacted / meetings / wins) remain INDEPENDENT membership tallies and are
+    // never reduced by client status — that math is untouched. Precedence only
+    // governs the footprint reads (market owned / net-new addressable).
+    let contacted = 0, meetings = 0, wins = 0, clientsInTam = 0, netNew = 0;
+    const indMap = new Map();
+    const verMap = new Map();
+    const tamDomains = new Set();
+
     for (const r of rows) {
       const d = String(r.domain).toLowerCase();
-      const key = (r.industry || "").trim().toLowerCase() || "(unspecified)";
-      const label = (r.industry || "").trim() || "Unspecified";
-      let e = indMap.get(key);
-      if (!e) { e = { key, label, tam: 0, contacted: 0, meetings: 0, wins: 0 }; indMap.set(key, e); }
-      e.tam++;
-      const isC = contactedDomains.has(d);
-      const isM = meetingDomains.has(d);
-      const isW = wonDomains.has(d);
-      if (isC) { e.contacted++; contacted++; }
-      if (isM) { e.meetings++; meetings++; }
-      if (isW) { e.wins++; wins++; }
+      tamDomains.add(d);
+      const c = contactedDomains.has(d);
+      const mt = meetingDomains.has(d);
+      const w = wonDomains.has(d);
+      const cl = clientDomains.has(d);
+      if (c) contacted++;
+      if (mt) meetings++;
+      if (w) wins++;
+      if (cl) clientsInTam++;
+      if (!cl && !c) netNew++; // net-new addressable: neither client nor contacted
+
+      const iKey = (r.industry || "").trim().toLowerCase() || "(unspecified)";
+      const iLabel = (r.industry || "").trim() || "Unspecified";
+      tally(indMap, iKey, iLabel, { c, m: mt, w, cl });
+
+      const vKey = verticalBucket(r.vertical);
+      tally(verMap, vKey, vKey, { c, m: mt, w, cl });
     }
+
     const byIndustry = [...indMap.values()].sort((a, b) => b.tam - a.tam);
+    const byVertical = [...verMap.values()].sort((a, b) => b.tam - a.tam);
+
+    // Off-list cleanup: touched accounts that are NOT on the TAM list, split into
+    // clients you've touched (intentional footprint, not drift) vs non-TAM,
+    // non-client accounts you've touched (real drift).
+    let offlistClients = 0, offlistDrift = 0;
+    for (const d of contactedDomains) {
+      if (tamDomains.has(d)) continue;
+      if (clientDomains.has(d)) offlistClients++;
+      else offlistDrift++;
+    }
 
     return {
       ok: true,
@@ -82,8 +116,12 @@ async function getTam() {
       contacted,
       meetings,
       wins,
-      contactedOutside: contactedDomains.size - contacted,
+      clientsInTam,
+      netNew,
+      offlistClients,
+      offlistDrift,
       byIndustry,
+      byVertical,
     };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -110,80 +148,19 @@ function StatCard({ label, count, total, headlinePct }) {
   );
 }
 
-// ---- Charts (server-rendered inline SVG) --------------------------------
-const pt = (cx, cy, r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-function donutSlice(cx, cy, rIn, rOut, a0, a1) {
-  const large = a1 - a0 > Math.PI ? 1 : 0;
-  const [x0o, y0o] = pt(cx, cy, rOut, a0);
-  const [x1o, y1o] = pt(cx, cy, rOut, a1);
-  const [x1i, y1i] = pt(cx, cy, rIn, a1);
-  const [x0i, y0i] = pt(cx, cy, rIn, a0);
-  return `M ${x0o} ${y0o} A ${rOut} ${rOut} 0 ${large} 1 ${x1o} ${y1o} L ${x1i} ${y1i} A ${rIn} ${rIn} 0 ${large} 0 ${x0i} ${y0i} Z`;
-}
-
-function CompositionDonut({ byIndustry }) {
-  const total = byIndustry.reduce((s, e) => s + e.tam, 0) || 1;
-  const cx = 90, cy = 90, rOut = 80, rIn = 50;
-  let a = -Math.PI / 2;
-  const slices = byIndustry.map((e, i) => {
-    const frac = e.tam / total;
-    const a0 = a;
-    const a1 = a + frac * 2 * Math.PI;
-    a = a1;
-    return { e, i, frac, a0, a1 };
-  });
-  const single = byIndustry.length === 1;
+// Footprint / off-list card with a free-form subtitle and optional progress bar.
+function NoteCard({ label, big, sub, accent, barPct }) {
   return (
-    <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
-      <svg viewBox="0 0 180 180" width="180" height="180" style={{ flexShrink: 0 }}>
-        {single ? (
-          <g>
-            <circle cx={cx} cy={cy} r={rOut} fill={colorForIndustry(byIndustry[0].key, 0)} />
-            <circle cx={cx} cy={cy} r={rIn} fill={C.panel} />
-          </g>
-        ) : (
-          slices.map(({ e, i, a0, a1 }) => (
-            <path key={e.key} d={donutSlice(cx, cy, rIn, rOut, a0, a1)} fill={colorForIndustry(e.key, i)} />
-          ))
-        )}
-      </svg>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
-        {byIndustry.map((e, i) => (
-          <div key={e.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: C.ink }}>
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: colorForIndustry(e.key, i), flexShrink: 0 }} />
-            <span style={{ textTransform: "capitalize" }}>{e.label}</span>
-            <span style={{ color: C.muted }}>{pctStr(e.tam, total)} · {fmt(e.tam)}</span>
-          </div>
-        ))}
-      </div>
+    <div style={{ ...card, ...(accent ? { borderLeft: `3px solid ${accent}` } : {}) }}>
+      <div style={{ textTransform: "uppercase", fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.inkSoft }}>{label}</div>
+      <div style={{ fontSize: 34, fontWeight: 700, color: C.navy, marginTop: 6 }}>{big}</div>
+      <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{sub}</div>
+      {barPct != null && (
+        <div style={{ marginTop: 10, height: 6, background: C.line, borderRadius: 4, overflow: "hidden" }}>
+          <div style={{ width: `${Math.min(100, barPct)}%`, height: "100%", background: C.green, borderRadius: 4 }} />
+        </div>
+      )}
     </div>
-  );
-}
-
-function PenetrationBars({ byIndustry }) {
-  const n = byIndustry.length || 1;
-  const max = Math.max(1, ...byIndustry.map((e) => pctNum(e.contacted, e.tam)));
-  const pad = 6, top = 16, plotH = 110, baseY = top + plotH;
-  const W = 300, H = baseY + 28;
-  const slotW = (W - pad * 2) / n;
-  const barW = Math.min(46, slotW * 0.6);
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
-      {byIndustry.map((e, i) => {
-        const v = pctNum(e.contacted, e.tam);
-        const cx = pad + slotW * (i + 0.5);
-        const x = cx - barW / 2;
-        const h = (v / max) * plotH;
-        return (
-          <g key={e.key}>
-            <rect x={x} y={baseY - h} width={barW} height={h} fill={colorForIndustry(e.key, i)} rx={2} />
-            <text x={cx} y={baseY - h - 4} textAnchor="middle" fontSize={10} fill={C.inkSoft}>{v.toFixed(1)}%</text>
-            <text x={cx} y={baseY + 14} textAnchor="middle" fontSize={9} fill={C.muted}>{e.label}</text>
-          </g>
-        );
-      })}
-      <line x1={0} y1={baseY} x2={W} y2={baseY} stroke={C.line} strokeWidth={1} />
-    </svg>
   );
 }
 
@@ -192,9 +169,6 @@ export default async function TamPage() {
 
   const seclabel = { textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted, margin: "22px 2px 10px" };
   const panel = card;
-  const th = { textAlign: "left", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: C.inkSoft, background: "#f4f6f9", padding: "11px 14px", borderBottom: `1px solid ${C.line}` };
-  const td = { padding: "12px 14px", borderBottom: `1px solid ${C.line}`, fontSize: 13, color: C.ink };
-  const numTd = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
@@ -224,68 +198,48 @@ export default async function TamPage() {
             <StatCard label="Wins" count={m.wins} total={m.total} headlinePct />
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
-            <div style={panel}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 10 }}>TAM composition by industry</div>
-              <CompositionDonut byIndustry={m.byIndustry} />
-            </div>
-            <div style={panel}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 10 }}>Penetration % by industry</div>
-              <PenetrationBars byIndustry={m.byIndustry} />
-            </div>
+          <div style={seclabel}>Client Footprint</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+            <NoteCard
+              label="Market owned"
+              big={pctStr(m.clientsInTam, m.total)}
+              sub={`${fmt(m.clientsInTam)} of ${fmt(m.total)} TAM companies are clients`}
+              accent={C.green}
+              barPct={pctNum(m.clientsInTam, m.total)}
+            />
+            <NoteCard
+              label="Net-new addressable"
+              big={fmt(m.netNew)}
+              sub="TAM companies that are neither client nor contacted"
+              accent={C.green}
+            />
           </div>
 
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "22px 2px 10px" }}>
-            <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted }}>Industry Breakdown</div>
-            <a
-              href="/api/tam/export"
-              className="btnish"
-              style={{ background: C.navy, color: "#fff", fontSize: 12, fontWeight: 600, padding: "8px 14px", borderRadius: 9, textDecoration: "none", boxShadow: SHADOW }}
-            >
-              Export Uncontacted Targets (CSV)
-            </a>
-          </div>
-          <div style={panel}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead><tr>
-                <th style={th}>Industry</th>
-                <th style={{ ...th, textAlign: "right" }}>TAM Companies</th>
-                <th style={{ ...th, textAlign: "right" }}>Contacted</th>
-                <th style={{ ...th, textAlign: "right" }}>Penetration %</th>
-                <th style={{ ...th, textAlign: "right" }}>Meetings</th>
-                <th style={{ ...th, textAlign: "right" }}>Wins</th>
-              </tr></thead>
-              <tbody>
-                {m.byIndustry.map((e, i) => (
-                  <tr key={e.key}>
-                    <td style={td}>
-                      <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: colorForIndustry(e.key, i), marginRight: 8 }} />
-                      <span style={{ textTransform: "capitalize" }}>{e.label}</span>
-                    </td>
-                    <td style={numTd}>{fmt(e.tam)}</td>
-                    <td style={numTd}>{fmt(e.contacted)}</td>
-                    <td style={{ ...numTd, fontWeight: 700, color: C.navy }}>{pctStr(e.contacted, e.tam)}</td>
-                    <td style={numTd}>{fmt(e.meetings)}</td>
-                    <td style={numTd}>{fmt(e.wins)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <TamSegments C={C} SHADOW={SHADOW} byIndustry={m.byIndustry} byVertical={m.byVertical} />
 
           <div style={seclabel}>Off-List Activity</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
-            <div style={{ ...panel, borderLeft: `3px solid ${C.muted}` }}>
-              <div style={{ textTransform: "uppercase", fontSize: 11, fontWeight: 700, letterSpacing: 1, color: C.inkSoft }}>Contacted outside TAM</div>
-              <div style={{ fontSize: 34, fontWeight: 700, color: C.navy, marginTop: 6 }}>{fmt(m.contactedOutside)}</div>
-              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>accounts touched but not on the TAM list</div>
-            </div>
+            <NoteCard
+              label="Clients you've touched"
+              big={fmt(m.offlistClients)}
+              sub="client accounts touched but not on your TAM list — footprint, not drift"
+              accent={C.green}
+            />
+            <NoteCard
+              label="Off-list drift"
+              big={fmt(m.offlistDrift)}
+              sub="non-TAM, non-client accounts touched"
+              accent={C.muted}
+            />
           </div>
         </>
       )}
 
       <div style={seclabel}>Import</div>
-      <TamClient C={C} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <TamClient C={C} />
+        <ClientUpload C={C} />
+      </div>
     </main>
   );
 }
