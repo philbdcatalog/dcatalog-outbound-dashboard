@@ -12,8 +12,8 @@ export const fetchCache = "force-no-store";
 
 const BATCH = 500;
 const ALLOWED = [
-  "domain", "company_name", "website_raw", "industry",
-  "subindustry", "employees", "annual_revenue", "state", "linkedin_url",
+  "domain", "company_name", "website_raw", "industry", "subindustry",
+  "vertical", "employees", "annual_revenue", "state", "linkedin_url",
 ];
 
 // Whitelist columns — never trust arbitrary client-sent fields.

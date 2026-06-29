@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
 import { normalizeDomain } from "../../lib/ingest";
+import { verticalBucket } from "../../lib/verticals";
 import { SHADOW } from "../../lib/theme";
 
 // Parse a possibly-formatted integer ("$1,200,000", "1,500", "") -> int | null.
@@ -43,21 +44,32 @@ export default function TamClient({ C }) {
           let total = 0;
           for (const row of res.data) {
             total++;
-            const domain = normalizeDomain(row["Website"]);
+            // Case-insensitive header lookup (trim + lowercase) so "Vertical",
+            // "vertical", "Website", "WEBSITE", etc. all resolve regardless of
+            // how the export tool cased them. Previously headers were matched by
+            // exact string, so any case mismatch silently dropped that column.
+            const idx = {};
+            for (const k of Object.keys(row)) idx[k.trim().toLowerCase()] = row[k];
+            const get = (name) => idx[name.trim().toLowerCase()];
+
+            const domain = normalizeDomain(get("Website"));
             if (!domain) {
               skipped++;
               continue;
             }
             byDomain.set(domain, {
               domain,
-              company_name: clean(row["Company"]),
-              website_raw: clean(row["Website"]),
-              industry: clean(row["industry"]),
-              subindustry: clean(row["subindustry"]),
-              employees: toInt(row["Employees"]),
-              annual_revenue: toInt(row["Company Annual Revenue"]),
-              state: clean(row["Company State"]),
-              linkedin_url: clean(row["Company Linkedin"]),
+              company_name: clean(get("Company")),
+              website_raw: clean(get("Website")),
+              industry: clean(get("Industry")),
+              subindustry: clean(get("Subindustry")),
+              // Bucket vertical so blank / off-taxonomy values land as
+              // "needs review" instead of NULL (matches read-side bucketing).
+              vertical: verticalBucket(get("Vertical")),
+              employees: toInt(get("Employees")),
+              annual_revenue: toInt(get("Company Annual Revenue")),
+              state: clean(get("Company State")),
+              linkedin_url: clean(get("Company Linkedin")),
             });
           }
           resolve({ rows: [...byDomain.values()], skipped, total });
