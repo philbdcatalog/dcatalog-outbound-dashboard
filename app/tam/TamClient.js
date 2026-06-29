@@ -239,6 +239,13 @@ export default function TamClient({ C }) {
                   {result.headers.join(", ")}
                 </div>
               )}
+              {result.sample && (
+                <div style={{ marginTop: 4 }}>
+                  Written to DB (first row): industry {JSON.stringify(result.sample.industry)},{" "}
+                  subindustry {JSON.stringify(result.sample.subindustry)},{" "}
+                  vertical {JSON.stringify(result.sample.vertical)}.
+                </div>
+              )}
             </div>
           )}
         </div>

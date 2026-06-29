@@ -1,5 +1,6 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { SESSION_COOKIE, verifySessionToken } from "../../../../lib/auth";
+import { verticalBucket } from "../../../../lib/verticals";
 
 // POST /api/tam/import
 // Body: { mode: "replace" | "add", rows: [...normalized rows...], skipped, total }
@@ -11,16 +12,63 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 
 const BATCH = 500;
-const ALLOWED = [
-  "domain", "company_name", "website_raw", "industry", "subindustry",
-  "vertical", "employees", "annual_revenue", "state", "linkedin_url",
-];
 
-// Whitelist columns — never trust arbitrary client-sent fields.
-function clean(r) {
-  const out = {};
-  for (const k of ALLOWED) out[k] = r[k] ?? null;
-  return out;
+// Logical column -> the source keys we'll accept for it, in priority order.
+// The client already sends normalized lowercase keys, but we ALSO accept the
+// raw CSV header casing (e.g. "Industry"/"Vertical"/"Company State") so the
+// route is not a second place a column can silently drop on a casing mismatch.
+const COLUMN_KEYS = {
+  domain: ["domain"],
+  company_name: ["company_name", "company"],
+  website_raw: ["website_raw", "website"],
+  industry: ["industry"],
+  subindustry: ["subindustry"],
+  vertical: ["vertical"],
+  employees: ["employees"],
+  annual_revenue: ["annual_revenue", "company annual revenue"],
+  state: ["state", "company state"],
+  linkedin_url: ["linkedin_url", "company linkedin"],
+};
+
+// Build a case-insensitive index of a row's keys (trim + lowercase), keeping the
+// FIRST non-empty value per normalized name so a blank duplicate can't clobber.
+function indexRow(r) {
+  const idx = {};
+  for (const k of Object.keys(r)) {
+    const key = k.trim().toLowerCase();
+    const v = r[k];
+    const valHasContent = v != null && String(v).trim() !== "";
+    const idxHasContent = idx[key] != null && String(idx[key]).trim() !== "";
+    if (!(key in idx) || (valHasContent && !idxHasContent)) idx[key] = v;
+  }
+  return idx;
+}
+
+function pick(idx, keys) {
+  for (const k of keys) {
+    const v = idx[k];
+    if (v != null && String(v).trim() !== "") return v;
+  }
+  return null;
+}
+
+// Map a client row -> insert payload, resolving every column case-insensitively.
+function cleanRow(r) {
+  const idx = indexRow(r);
+  return {
+    domain: pick(idx, COLUMN_KEYS.domain),
+    company_name: pick(idx, COLUMN_KEYS.company_name),
+    website_raw: pick(idx, COLUMN_KEYS.website_raw),
+    industry: pick(idx, COLUMN_KEYS.industry),
+    subindustry: pick(idx, COLUMN_KEYS.subindustry),
+    // Bucket vertical (idempotent — safe even though the client already does it)
+    // so blank / off-taxonomy values land as "needs review" rather than NULL.
+    vertical: verticalBucket(pick(idx, COLUMN_KEYS.vertical)),
+    employees: pick(idx, COLUMN_KEYS.employees),
+    annual_revenue: pick(idx, COLUMN_KEYS.annual_revenue),
+    state: pick(idx, COLUMN_KEYS.state),
+    linkedin_url: pick(idx, COLUMN_KEYS.linkedin_url),
+  };
 }
 
 export async function POST(request) {
@@ -39,7 +87,15 @@ export async function POST(request) {
   const mode = body?.mode === "replace" ? "replace" : "add";
   const skipped = Number(body?.skipped) || 0;
   const total = Number(body?.total) || 0;
-  const rows = Array.isArray(body?.rows) ? body.rows.filter((r) => r && r.domain).map(clean) : [];
+  const rows = Array.isArray(body?.rows)
+    ? body.rows.map(cleanRow).filter((r) => r && r.domain)
+    : [];
+
+  // Echoed back so the caller can confirm, end-to-end in production, the exact
+  // values the route is about to write for the three columns that kept dropping.
+  const sample = rows[0]
+    ? { industry: rows[0].industry, subindustry: rows[0].subindustry, vertical: rows[0].vertical }
+    : null;
 
   try {
     const supabase = getServiceClient();
@@ -79,7 +135,7 @@ export async function POST(request) {
       }
     }
 
-    return Response.json({ ok: true, mode, inserted, updated, skipped, total });
+    return Response.json({ ok: true, mode, inserted, updated, skipped, total, sample });
   } catch (err) {
     return Response.json({ ok: false, stage: "init", error: err.message }, { status: 500 });
   }
