@@ -172,15 +172,16 @@ export default async function Dashboard() {
       )}
 
       <div style={seclabel}>Output This Quarter</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
         <Gauge label="Meetings Booked" value={f.meetings} goal={d.goals.meetings} display={fmt(f.meetings)} />
         <Gauge label="Opportunities Created" value={f.opps} goal={d.goals.opps} display={fmt(f.opps)} />
-        {/* Outbound closed revenue this quarter (won + is_outbound). Replaces the
-            old "Pipeline Generated" gauge, which mislabeled summed won deals as
-            pipeline. True "Pipeline Generated" (open+won+lost outbound created
-            this quarter) returns as a 4th gauge in Phase 2, once open/lost sync.
-            Goal reuses the quarterly revenue (pipeline) target for now. */}
+        {/* Outbound closed revenue this quarter (won + is_outbound). Goal reuses
+            the quarterly revenue target for now (no dedicated won-revenue goal). */}
         <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.pipeline} display={"$" + Math.round(d.outboundWon / 1000) + "K"} />
+        {/* Pipeline Generated (definition B): outbound OPEN opportunities created
+            this quarter (Created_Time-based). Won has its own gauge; lost counts
+            toward neither. */}
+        <Gauge label="Pipeline Generated" value={d.pipelineGenerated} goal={d.goals.pipeline} display={"$" + Math.round(d.pipelineGenerated / 1000) + "K"} />
       </div>
 
       <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies, not contacts</span></div>

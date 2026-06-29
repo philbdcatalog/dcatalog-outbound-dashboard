@@ -1,5 +1,6 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
+import { accountTouchedBefore, writeDealPreservingOutbound } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho-wins
 // LIGHTWEIGHT, HIGH-CADENCE companion to /api/sync/zoho. Pulls ONLY current-
@@ -70,7 +71,7 @@ export async function GET(request) {
       accessToken,
       module: "Deals",
       criteria: `((Stage:equals:Closed Won)and(Closing_Date:greater_equal:${qStartStr}))`,
-      fields: "Deal_Name,Amount,Closing_Date,Website,Account_Name,Stage,Contact_Name",
+      fields: "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name",
     });
     counts.deals_seen = deals.length;
 
@@ -84,21 +85,23 @@ export async function GET(request) {
         const account = domain ? await findAccount(supabase, domain) : null;
 
         if (domain && account) {
-          const { error } = await supabase.from("deals").upsert(
-            {
-              zoho_deal_id: deal.id,
-              domain,
-              account_id: account.id,
-              company_name: companyName || dealName || null,
-              stage: "won",
-              amount: deal.Amount ?? null,
-              closed_at: deal.Closing_Date ?? null,
-              is_outbound: true,
-              raw: deal,
-            },
-            { onConflict: "zoho_deal_id" }
+          // is_outbound is REP-CONTROLLED: set ONCE on insert via the 90-day
+          // touch rule, NEVER overwritten on re-sync (this cron runs every 30
+          // min — an upsert that re-set is_outbound:true would clobber a rep's
+          // manual graduation). is_outbound is intentionally absent from fields.
+          const fields = {
+            zoho_deal_id: deal.id,
+            domain,
+            account_id: account.id,
+            company_name: companyName || dealName || null,
+            stage: "won",
+            amount: deal.Amount ?? null,
+            closed_at: deal.Closing_Date ?? null,
+            raw: deal,
+          };
+          await writeDealPreservingOutbound(supabase, fields, () =>
+            accountTouchedBefore(supabase, account.id, deal.Closing_Date || deal.Created_Time || null)
           );
-          if (error) throw error;
           counts.deals_matched++;
         } else {
           await queueRecon(supabase, {

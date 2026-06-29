@@ -1,6 +1,7 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain, domainFromEmail } from "../../../../lib/ingest";
 import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
+import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho
 // Scheduled PULL job (Vercel Cron, hourly). Pulls Closed Won deals and booked
@@ -83,25 +84,37 @@ export async function GET(request) {
     const accessToken = await getZohoAccessToken();
 
     // ----------------------------------------------------------------------
-    // CLOSED-WON DEALS
+    // DEALS — open + won + lost (Phase 2)
+    //
+    // Binary stage model (classifyStage): closed-won -> 'won', closed-lost ->
+    // 'lost', anything not closed -> 'open' (pipeline). We pull two sets and
+    // merge/de-dupe by deal id:
+    //   (a) ALL Closed Won deals (any date) — the won gauge/feed need wins
+    //       regardless of when the record was created; and
+    //   (b) ALL deals CREATED this quarter — gives us open pipeline + this
+    //       quarter's lost. Open is intentionally scoped to this quarter so the
+    //       "Pipeline Generated" metric = opportunities generated this quarter.
+    //
+    // is_outbound is set ONLY on brand-new rows (90-day touch rule) and is NEVER
+    // recomputed on an existing row — enforced by writeDealPreservingOutbound.
     // ----------------------------------------------------------------------
-    const deals = await zohoSearchAll({
-      accessToken,
-      module: "Deals",
-      criteria: "(Stage:equals:Closed Won)",
-      // Contact_Name lets us resolve a domain from the primary contact's email
-      // when Website is blank (Bug 3 — Zoho Deal Website is usually empty).
-      fields: "Deal_Name,Amount,Closing_Date,Website,Account_Name,Stage,Contact_Name",
-    });
-    counts.deals_seen = deals.length;
-
-    // Start of the current calendar quarter (UTC), computed from the run date.
-    // Used to stop flooding the recon queue with UNMATCHED historical closed-won
-    // deals — only deals closing this quarter are worth reconciling. (Matched
-    // deals still write to `deals` regardless of date.)
     const now = new Date();
     const quarterStart = new Date(Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1));
+    // Zoho criteria datetime literal, e.g. 2026-04-01T00:00:00+00:00.
+    const qStartZoho = quarterStart.toISOString().replace(/\.\d{3}Z$/, "+00:00");
+    const DEAL_FIELDS = "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name";
+
+    const [wonDeals, recentDeals] = await Promise.all([
+      zohoSearchAll({ accessToken, module: "Deals", criteria: "(Stage:equals:Closed Won)", fields: DEAL_FIELDS }),
+      zohoSearchAll({ accessToken, module: "Deals", criteria: `(Created_Time:greater_equal:${qStartZoho})`, fields: DEAL_FIELDS }),
+    ]);
+    const dealsById = new Map();
+    for (const d of [...wonDeals, ...recentDeals]) if (d && d.id) dealsById.set(d.id, d);
+    const deals = [...dealsById.values()];
+    counts.deals_seen = deals.length;
+
     let dealsSkippedHistorical = 0;
+    const stageCounts = { open: 0, won: 0, lost: 0 };
 
     for (const deal of deals) {
       try {
@@ -109,45 +122,52 @@ export async function GET(request) {
         const companyName = zohoName(deal.Account_Name);
         if (TEST_RE.test(dealName) || TEST_RE.test(companyName)) continue; // skip test data
 
-        // Is this deal historical (closed before this quarter)? Unmatched
-        // historical deals are skipped (not queued), so we don't pay for a
-        // contact lookup on them — we only resolve via the email fallback for
-        // current-quarter deals (and any deal whose date is missing/unparseable).
-        const closing = deal.Closing_Date ? new Date(deal.Closing_Date) : null;
-        const isHistorical = closing && !isNaN(closing.getTime()) && closing < quarterStart;
+        const stage = classifyStage(deal.Stage);
 
-        // Resolve domain: Website first; if blank AND not historical, fall back
-        // to the primary contact's work-email domain (Bug 3). Historical blank
-        // deals just stay unresolved -> skipped below.
+        // "Current" = created this quarter OR closed this quarter OR no usable
+        // date. Drives whether we (1) pay for a blank-website contact lookup and
+        // (2) queue an UNMATCHED deal. Historical unmatched deals are noise.
+        const created = deal.Created_Time ? new Date(deal.Created_Time) : null;
+        const closed = deal.Closing_Date ? new Date(deal.Closing_Date) : null;
+        const createdCurrent = created && !isNaN(created.getTime()) && created >= quarterStart;
+        const closedCurrent = closed && !isNaN(closed.getTime()) && closed >= quarterStart;
+        const noDates = (!created || isNaN(created.getTime())) && (!closed || isNaN(closed.getTime()));
+        const isCurrent = createdCurrent || closedCurrent || noDates;
+
+        // Resolve domain: Website first; if blank AND current, fall back to the
+        // primary contact's work-email domain. Historical blank deals stay
+        // unresolved -> skipped below (no queue, no contact lookup).
         let domain = normalizeDomain(deal.Website);
-        if (!domain && !isHistorical) {
+        if (!domain && isCurrent) {
           domain = await resolveDealDomain({ accessToken, deal });
         }
         const account = domain ? await findAccount(supabase, domain) : null;
 
         if (domain && account) {
-          const { error } = await supabase.from("deals").upsert(
-            {
-              zoho_deal_id: deal.id,
-              domain,
-              account_id: account.id,
-              company_name: companyName || dealName || null,
-              stage: "won",
-              amount: deal.Amount ?? null,
-              closed_at: deal.Closing_Date ?? null,
-              is_outbound: true,
-              raw: deal,
-            },
-            { onConflict: "zoho_deal_id" } // re-sync updates amount/stage
+          // Fields we always (re)write. is_outbound is DELIBERATELY absent — the
+          // helper preserves it on existing rows and seeds it once on insert.
+          const fields = {
+            zoho_deal_id: deal.id,
+            domain,
+            account_id: account.id,
+            company_name: companyName || dealName || null,
+            stage,
+            amount: deal.Amount ?? null,
+            closed_at: deal.Closing_Date ?? null,
+            raw: deal,
+          };
+          // New-row is_outbound: 90-day touch rule against the deal's close date,
+          // else its creation date, else any-touch-ever. false when no qualifying
+          // touch -> a rep can graduate it later from the queue.
+          const ref = deal.Closing_Date || deal.Created_Time || null;
+          await writeDealPreservingOutbound(supabase, fields, () =>
+            accountTouchedBefore(supabase, account.id, ref)
           );
-          if (error) throw error;
           counts.deals_matched++;
+          stageCounts[stage] = (stageCounts[stage] || 0) + 1;
         } else {
-          // Unmatched deal: only queue it if it closed in the CURRENT quarter.
-          // Older unmatched closed-won deals are historical noise — skip them
-          // entirely (no queue, no deals row). A missing/unparseable
-          // Closing_Date is NOT treated as historical, so we still queue it.
-          if (isHistorical) {
+          // Unmatched: queue only if current; historical unmatched is noise.
+          if (!isCurrent) {
             dealsSkippedHistorical++;
             continue;
           }
@@ -158,7 +178,7 @@ export async function GET(request) {
             company_name: companyName || dealName || null,
             suggested_domain: domain,
             amount: deal.Amount ?? null,
-            occurred_at: deal.Closing_Date ?? null,
+            occurred_at: deal.Closing_Date || deal.Created_Time || null,
             reason: domain ? "no account match for domain" : "no website/domain on deal",
             raw: deal,
           });
@@ -295,7 +315,7 @@ export async function GET(request) {
       ok: true,
       ...counts,
       row_errors: rowErrors.length,
-      debug: { leads_fetched: leads.length, deals_fetched: deals.length, deals_skipped_historical: dealsSkippedHistorical, leads_error: leadsError },
+      debug: { leads_fetched: leads.length, deals_fetched: deals.length, deals_by_stage: stageCounts, deals_skipped_historical: dealsSkippedHistorical, leads_error: leadsError },
     });
   } catch (err) {
     // Fatal error (token exchange, Zoho fetch, etc.). Record it on the run row.
@@ -320,31 +340,9 @@ async function findAccount(supabase, domain) {
   return data || null;
 }
 
-// Outbound attribution: did this account receive any touch_events (any kind,
-// any channel) in the 90 days BEFORE the meeting was booked? A head-only count
-// query keeps it cheap (no rows transferred). Edge case: if bookedAt is
-// null/unparseable we can't window it, so fall back to "any touch ever for this
-// account" — i.e. treat the meeting as outbound if the account has touched at
-// all. Returns true/false.
-async function accountTouchedBefore(supabase, accountId, bookedAt) {
-  const booked = bookedAt ? new Date(bookedAt) : null;
-  const bookedValid = booked && !isNaN(booked.getTime());
-
-  let q = supabase
-    .from("touch_events")
-    .select("id", { count: "exact", head: true })
-    .eq("account_id", accountId);
-
-  if (bookedValid) {
-    const windowStart = new Date(booked.getTime() - 90 * 24 * 60 * 60 * 1000);
-    q = q.lte("occurred_at", booked.toISOString()).gte("occurred_at", windowStart.toISOString());
-  }
-  // When bookedAt is invalid, no time bounds are applied => "any touch ever".
-
-  const { count, error } = await q;
-  if (error) throw error;
-  return (count || 0) > 0;
-}
+// accountTouchedBefore (the 90-day touch rule) is shared with the deal sync and
+// now lives in lib/zohoDeals.js; it's imported at the top of this file and used
+// for both meeting outbound-attribution and new-deal is_outbound seeding.
 
 // The account's most recent meaningful-touch channel — the same signal the
 // dashboard breakdowns use to attribute an account. Falls back source for the
