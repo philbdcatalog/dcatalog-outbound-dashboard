@@ -44,12 +44,24 @@ export default function TamClient({ C }) {
           let total = 0;
           for (const row of res.data) {
             total++;
-            // Case-insensitive header lookup (trim + lowercase) so "Vertical",
-            // "vertical", "Website", "WEBSITE", etc. all resolve regardless of
-            // how the export tool cased them. Previously headers were matched by
-            // exact string, so any case mismatch silently dropped that column.
+            // Case-insensitive header lookup: BOTH the index keys and the get()
+            // argument are trim+lowercased, so "Vertical"/"vertical"/"VERTICAL"
+            // (and every other column) resolve regardless of export casing.
+            //
+            // Real exports sometimes carry the same column twice under different
+            // casing (a lowercase pipeline copy AND a capitalized display copy),
+            // where one copy is blank. A last-write-wins index let the blank
+            // duplicate clobber the real value — nulling industry/subindustry/
+            // vertical while single-copy columns (company, website…) were fine.
+            // So we keep the FIRST non-empty value for each normalized header.
             const idx = {};
-            for (const k of Object.keys(row)) idx[k.trim().toLowerCase()] = row[k];
+            for (const k of Object.keys(row)) {
+              const key = k.trim().toLowerCase();
+              const val = row[k];
+              const valHasContent = val != null && String(val).trim() !== "";
+              const idxHasContent = idx[key] != null && String(idx[key]).trim() !== "";
+              if (!(key in idx) || (valHasContent && !idxHasContent)) idx[key] = val;
+            }
             const get = (name) => idx[name.trim().toLowerCase()];
 
             const domain = normalizeDomain(get("Website"));
