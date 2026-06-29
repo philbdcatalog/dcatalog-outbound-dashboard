@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { CANONICAL_VERTICALS, NEEDS_REVIEW } from "../../lib/verticals";
 
 const fmt = (n) => (n ?? 0).toLocaleString();
@@ -28,7 +28,21 @@ export default function TamSegments({ C, SHADOW, byIndustry, byVertical, marketE
   const [mode, setMode] = useState("industry"); // "industry" | "vertical"
   const [exportVertical, setExportVertical] = useState(""); // "" = all verticals
 
-  const segments = mode === "industry" ? byIndustry : byVertical;
+  // ONE source of truth for the active toggle, shared by the donut, bars, and
+  // table so they can never diverge. Deduped by segment key (defensive: the view
+  // returns distinct segments, but this guarantees one legend/slice/row each) and
+  // sorted by total_market desc so the largest segment leads everywhere.
+  const rawSegments = mode === "industry" ? byIndustry : byVertical;
+  const segments = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    for (const s of rawSegments || []) {
+      if (seen.has(s.key)) continue;
+      seen.add(s.key);
+      out.push(s);
+    }
+    return out.sort((a, b) => b.total_market - a.total_market);
+  }, [rawSegments]);
   const totalMarket = segments.reduce((s, e) => s + e.total_market, 0) || 1;
 
   const colorFor = (seg, i) => {
