@@ -17,8 +17,20 @@ const TOOL_OPTIONS = [
 ];
 const TOOL_TO_CHANNEL = { instantly: "email", heyreach: "linkedin", justcall: "phone", lemlist: "multi-channel" };
 
+// Which review lane a queue row belongs to. Deals split by deal_stage so the
+// Opps (open) lane is distinct from Won; meetings are their own lane.
+function laneOf(r) {
+  if (r.kind !== "deal") return "meeting";
+  if (r.deal_stage === "open") return "opp";
+  if (r.deal_stage === "lost") return "lost";
+  return "won"; // 'won' or legacy rows with null deal_stage
+}
+const LANE_LABEL = { meeting: "Meeting", opp: "Opp", won: "Won", lost: "Lost" };
+const LANE_COLOR = (C) => ({ meeting: C.linkedin, opp: C.navy, won: C.green, lost: C.muted });
+
 export default function QueueClient({ initialRows, C }) {
   const [rows, setRows] = useState(initialRows || []);
+  const [lane, setLane] = useState("all"); // all | meeting | opp | won | lost
   // Per-row editable domain + transient busy/error state, keyed by row id.
   const [domains, setDomains] = useState(() =>
     Object.fromEntries((initialRows || []).map((r) => [r.id, r.suggested_domain || ""]))
@@ -85,9 +97,49 @@ export default function QueueClient({ initialRows, C }) {
     );
   }
 
+  const laneColor = LANE_COLOR(C);
+  const counts = rows.reduce((acc, r) => { const l = laneOf(r); acc[l] = (acc[l] || 0) + 1; return acc; }, {});
+  const LANES = [
+    { key: "all", label: "All" },
+    { key: "meeting", label: "Meetings" },
+    { key: "opp", label: "Opps" },
+    { key: "won", label: "Won" },
+    { key: "lost", label: "Lost" },
+  ];
+  const visible = rows.filter((r) => lane === "all" || laneOf(r) === lane);
+
+  const laneBtn = (l) => {
+    const active = lane === l.key;
+    const n = l.key === "all" ? rows.length : counts[l.key] || 0;
+    return (
+      <button
+        key={l.key}
+        type="button"
+        onClick={() => setLane(l.key)}
+        style={{
+          fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 8, cursor: "pointer",
+          border: `1px solid ${active ? C.navy : C.line}`,
+          background: active ? C.navy : C.panel, color: active ? "#fff" : C.inkSoft,
+        }}
+      >
+        {l.label} <span style={{ opacity: 0.7 }}>{n}</span>
+      </button>
+    );
+  };
+
   return (
-    <div style={{ background: C.panel, borderRadius: 14, border: `1px solid ${C.line}`, padding: 18, boxShadow: SHADOW, overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+    <div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {LANES.map(laneBtn)}
+      </div>
+
+      <div style={{ background: C.panel, borderRadius: 14, border: `1px solid ${C.line}`, padding: 18, boxShadow: SHADOW, overflowX: "auto" }}>
+        {visible.length === 0 ? (
+          <div style={{ padding: 28, textAlign: "center", color: C.inkSoft, fontSize: 13 }}>
+            No items in this lane.
+          </div>
+        ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead><tr>
           <th style={th}>Company</th>
           <th style={th}>Type</th>
@@ -98,15 +150,16 @@ export default function QueueClient({ initialRows, C }) {
           <th style={{ ...th, textAlign: "right" }}>Action</th>
         </tr></thead>
         <tbody>
-          {rows.map((r) => {
+          {visible.map((r) => {
             const isOpp = r.kind === "deal";
+            const rowLane = laneOf(r);
             const disabled = !!busy[r.id];
             return (
               <tr key={r.id}>
                 <td style={td}>{r.company_name || "—"}</td>
                 <td style={td}>
-                  <span style={{ color: isOpp ? C.navy : C.linkedin, fontWeight: 600 }}>
-                    {isOpp ? "Opp" : "Meeting"}
+                  <span style={{ color: laneColor[rowLane], fontWeight: 600 }}>
+                    {LANE_LABEL[rowLane]}
                   </span>
                 </td>
                 <td style={numTd}>{isOpp ? fmtMoney(r.amount) : "—"}</td>
@@ -171,7 +224,9 @@ export default function QueueClient({ initialRows, C }) {
             );
           })}
         </tbody>
-      </table>
+        </table>
+        )}
+      </div>
     </div>
   );
 }

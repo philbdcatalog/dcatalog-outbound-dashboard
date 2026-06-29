@@ -1,6 +1,7 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain } from "../../../../lib/ingest";
 import { SESSION_COOKIE, verifySessionToken } from "../../../../lib/auth";
+import { writeDealPreservingOutbound } from "../../../../lib/zohoDeals";
 
 // POST /api/queue/resolve
 // Resolves a zoho_recon_queue row from the Reconciliation Queue UI.
@@ -42,7 +43,7 @@ export async function POST(request) {
     // Load the queue row.
     const { data: row, error: rowErr } = await supabase
       .from("zoho_recon_queue")
-      .select("id, kind, zoho_id, company_name, amount, occurred_at, raw, status")
+      .select("id, kind, deal_stage, zoho_id, company_name, amount, occurred_at, raw, status")
       .eq("id", id)
       .single();
     if (rowErr || !row) {
@@ -86,23 +87,36 @@ export async function POST(request) {
       if (dealChannel && !VALID_CHANNELS.includes(dealChannel)) {
         return Response.json({ ok: false, error: `invalid channel '${dealChannel}' (must be email, linkedin, phone, or multi-channel)` }, { status: 400 });
       }
-      const { error } = await supabase.from("deals").upsert(
-        {
-          zoho_deal_id: row.zoho_id,
-          domain,
-          account_id: account.id,
-          company_name: row.company_name || null,
-          stage: "won",
-          amount: row.amount ?? null,
-          closed_at: row.occurred_at ?? null,
-          is_outbound: true,
-          tool: dealTool || null,
-          channel: dealChannel || null,
-          raw: row.raw,
-        },
-        { onConflict: "zoho_deal_id" }
-      );
-      if (error) return Response.json({ ok: false, stage: "deal", error: error.message }, { status: 500 });
+      // Graduate with the lane's stage (open/won/lost), not a hardcoded 'won'.
+      const VALID_STAGES = ["open", "won", "lost"];
+      const stage = VALID_STAGES.includes(row.deal_stage) ? row.deal_stage : "won";
+      // closed_at only applies to closed stages; an open opp has no close date.
+      const closedAt = stage === "open" ? null : row.occurred_at ?? null;
+
+      // Approve = "Add to outbound" = the rep asserting this deal is outbound, so
+      // is_outbound is set TRUE on insert (manual graduation is a first-class
+      // is_outbound source). The helper writes it ONCE and never overwrites it on
+      // an existing row, honoring the guardrail.
+      try {
+        await writeDealPreservingOutbound(
+          supabase,
+          {
+            zoho_deal_id: row.zoho_id,
+            domain,
+            account_id: account.id,
+            company_name: row.company_name || null,
+            stage,
+            amount: row.amount ?? null,
+            closed_at: closedAt,
+            tool: dealTool || null,
+            channel: dealChannel || null,
+            raw: row.raw,
+          },
+          () => true
+        );
+      } catch (error) {
+        return Response.json({ ok: false, stage: "deal", error: error.message }, { status: 500 });
+      }
     } else if (row.kind === "meeting") {
       // The queue picker sends a tool+channel pair (e.g. instantly/email). We
       // store BOTH on the meeting so the By Tool/By Channel breakdowns attribute

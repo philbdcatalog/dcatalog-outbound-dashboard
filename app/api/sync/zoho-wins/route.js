@@ -81,38 +81,64 @@ export async function GET(request) {
         const companyName = zohoName(deal.Account_Name);
         if (TEST_RE.test(dealName) || TEST_RE.test(companyName)) continue;
 
-        const domain = await resolveDealDomain({ accessToken, deal });
-        const account = domain ? await findAccount(supabase, domain) : null;
-
-        if (domain && account) {
-          // is_outbound is REP-CONTROLLED: set ONCE on insert via the 90-day
-          // touch rule, NEVER overwritten on re-sync (this cron runs every 30
-          // min — an upsert that re-set is_outbound:true would clobber a rep's
-          // manual graduation). is_outbound is intentionally absent from fields.
-          const fields = {
-            zoho_deal_id: deal.id,
-            domain,
-            account_id: account.id,
-            company_name: companyName || dealName || null,
+        // Already in `deals`? It cleared recon — just keep its fields fresh and
+        // NEVER touch is_outbound / re-queue (stage stays 'won' here).
+        const { data: existing, error: exErr } = await supabase
+          .from("deals").select("zoho_deal_id").eq("zoho_deal_id", deal.id).maybeSingle();
+        if (exErr) throw exErr;
+        if (existing) {
+          const { error } = await supabase.from("deals").update({
             stage: "won",
+            company_name: companyName || dealName || null,
             amount: deal.Amount ?? null,
             closed_at: deal.Closing_Date ?? null,
             raw: deal,
-          };
-          await writeDealPreservingOutbound(supabase, fields, () =>
-            accountTouchedBefore(supabase, account.id, deal.Closing_Date || deal.Created_Time || null)
+          }).eq("zoho_deal_id", deal.id);
+          if (error) throw error;
+          counts.deals_matched++;
+          continue;
+        }
+
+        const domain = await resolveDealDomain({ accessToken, deal });
+        const account = domain ? await findAccount(supabase, domain) : null;
+        const ref = deal.Closing_Date || deal.Created_Time || null;
+        const touched = account ? await accountTouchedBefore(supabase, account.id, ref) : false;
+
+        if (account && touched) {
+          // Confident outbound win -> insert with is_outbound=true (set ONCE on
+          // insert; the helper never overwrites it on a conflict).
+          await writeDealPreservingOutbound(
+            supabase,
+            {
+              zoho_deal_id: deal.id,
+              domain,
+              account_id: account.id,
+              company_name: companyName || dealName || null,
+              stage: "won",
+              amount: deal.Amount ?? null,
+              closed_at: deal.Closing_Date ?? null,
+              raw: deal,
+            },
+            () => true
           );
           counts.deals_matched++;
         } else {
+          // Unmatched OR no qualifying touch -> recon queue, tagged deal_stage
+          // 'won'. The rep graduates it (which sets is_outbound). Guardrail.
           await queueRecon(supabase, {
             kind: "deal",
+            deal_stage: "won",
             zoho_id: deal.id,
             source_module: "Deals",
             company_name: companyName || dealName || null,
             suggested_domain: domain,
             amount: deal.Amount ?? null,
-            occurred_at: deal.Closing_Date ?? null,
-            reason: domain ? "no account match for domain" : "no website/domain on deal",
+            occurred_at: deal.Closing_Date || deal.Created_Time || null,
+            reason: !domain
+              ? "no website/domain on deal"
+              : account
+              ? "no qualifying outbound touch — rep to confirm"
+              : "no account match for domain",
             raw: deal,
           });
           counts.deals_queued++;

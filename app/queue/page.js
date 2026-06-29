@@ -11,7 +11,7 @@ async function getPending() {
     const supabase = getServiceClient();
     const { data, error } = await supabase
       .from("zoho_recon_queue")
-      .select("id, kind, company_name, suggested_domain, amount, occurred_at, zoho_id")
+      .select("id, kind, deal_stage, company_name, suggested_domain, amount, occurred_at, zoho_id")
       .eq("status", "pending")
       .order("occurred_at", { ascending: false });
     if (error) return { ok: false, error: error.message };
