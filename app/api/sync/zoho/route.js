@@ -1,6 +1,6 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain, domainFromEmail } from "../../../../lib/ingest";
-import { getZohoAccessToken, zohoSearchAll } from "../../../../lib/zoho";
+import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
 
 // GET /api/sync/zoho
 // Scheduled PULL job (Vercel Cron, hourly). Pulls Closed Won deals and booked
@@ -20,7 +20,10 @@ import { getZohoAccessToken, zohoSearchAll } from "../../../../lib/zoho";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
-export const maxDuration = 60;
+// Full sync now pages through ALL closed-won deals (not just the first 200) and
+// does per-deal contact lookups for blank-website current-quarter deals, so give
+// it more headroom than the old 60s. Vercel Pro allows up to 300s.
+export const maxDuration = 300;
 
 // Substring test-data filter, per spec (case-insensitive). NOTE: this is a
 // plain substring match as requested ("contains 'Test'"), so it will also drop
@@ -86,7 +89,9 @@ export async function GET(request) {
       accessToken,
       module: "Deals",
       criteria: "(Stage:equals:Closed Won)",
-      fields: "Deal_Name,Amount,Closing_Date,Website,Account_Name,Stage",
+      // Contact_Name lets us resolve a domain from the primary contact's email
+      // when Website is blank (Bug 3 — Zoho Deal Website is usually empty).
+      fields: "Deal_Name,Amount,Closing_Date,Website,Account_Name,Stage,Contact_Name",
     });
     counts.deals_seen = deals.length;
 
@@ -104,9 +109,20 @@ export async function GET(request) {
         const companyName = zohoName(deal.Account_Name);
         if (TEST_RE.test(dealName) || TEST_RE.test(companyName)) continue; // skip test data
 
-        // Many historical deals have a blank Website -> no domain -> recon
-        // queue. That's expected, not an error.
-        const domain = normalizeDomain(deal.Website);
+        // Is this deal historical (closed before this quarter)? Unmatched
+        // historical deals are skipped (not queued), so we don't pay for a
+        // contact lookup on them — we only resolve via the email fallback for
+        // current-quarter deals (and any deal whose date is missing/unparseable).
+        const closing = deal.Closing_Date ? new Date(deal.Closing_Date) : null;
+        const isHistorical = closing && !isNaN(closing.getTime()) && closing < quarterStart;
+
+        // Resolve domain: Website first; if blank AND not historical, fall back
+        // to the primary contact's work-email domain (Bug 3). Historical blank
+        // deals just stay unresolved -> skipped below.
+        let domain = normalizeDomain(deal.Website);
+        if (!domain && !isHistorical) {
+          domain = await resolveDealDomain({ accessToken, deal });
+        }
         const account = domain ? await findAccount(supabase, domain) : null;
 
         if (domain && account) {
@@ -131,8 +147,7 @@ export async function GET(request) {
           // Older unmatched closed-won deals are historical noise — skip them
           // entirely (no queue, no deals row). A missing/unparseable
           // Closing_Date is NOT treated as historical, so we still queue it.
-          const closing = deal.Closing_Date ? new Date(deal.Closing_Date) : null;
-          if (closing && !isNaN(closing.getTime()) && closing < quarterStart) {
+          if (isHistorical) {
             dealsSkippedHistorical++;
             continue;
           }
@@ -200,7 +215,17 @@ export async function GET(request) {
         const domain = normalizeDomain(lead.Website) || domainFromEmail(lead.Email);
         const account = domain ? await findAccount(supabase, domain) : null;
 
-        if (domain && account) {
+        // Channel is NOT NULL on meetings. Derive it from the account's last
+        // meaningful-touch channel (the same derivation the breakdowns use):
+        // prefer the cached accounts.last_channel, else look it up from
+        // touch_events. If NEITHER yields a channel, we must not insert a null
+        // channel (it throws + aborts the row) — instead we route the meeting to
+        // the recon queue below, same as an unmatched one (Bug 2).
+        const channel =
+          (account && account.last_channel) ||
+          (account ? await lastMeaningfulChannel(supabase, account.id) : null);
+
+        if (domain && account && channel) {
           // Outbound attribution from OUR data: did this account receive any
           // touch (any kind/channel) in the 90 days BEFORE booked_at? If so the
           // meeting is outbound-attributed. If booked_at is null/unparseable we
@@ -217,18 +242,30 @@ export async function GET(request) {
             is_outbound: isOutbound,
             source_tool: "zoho",
             external_id: asExternalId(lead.id),
+            channel,
             raw: lead,
           };
-          // Channel = the matched account's last meaningful-touch channel
-          // (account-based attribution). If the account has no last_channel yet,
-          // omit the field so the column default applies — still record it.
-          if (account.last_channel) meeting.channel = account.last_channel;
 
           const { error } = await supabase
             .from("meetings")
             .upsert(meeting, { onConflict: "source_tool,external_id" });
           if (error) throw error;
           counts.meetings_matched++;
+        } else if (domain && account && !channel) {
+          // Matched to an account but no channel is derivable -> queue instead of
+          // inserting a null channel. A human can set the channel on resolve.
+          await queueRecon(supabase, {
+            kind: "meeting",
+            zoho_id: lead.id,
+            source_module: "Leads",
+            company_name: company || fullName || null,
+            suggested_domain: domain,
+            amount: null,
+            occurred_at: bookedAt,
+            reason: "matched account but no channel derivable (account has no meaningful touch)",
+            raw: lead,
+          });
+          counts.meetings_queued++;
         } else {
           await queueRecon(supabase, {
             kind: "meeting",
@@ -307,6 +344,24 @@ async function accountTouchedBefore(supabase, accountId, bookedAt) {
   const { count, error } = await q;
   if (error) throw error;
   return (count || 0) > 0;
+}
+
+// The account's most recent meaningful-touch channel — the same signal the
+// dashboard breakdowns use to attribute an account. Falls back source for the
+// meetings.channel NOT-NULL column when accounts.last_channel isn't set yet.
+// Non-fatal: on any error we return null and the caller queues the meeting.
+async function lastMeaningfulChannel(supabase, accountId) {
+  const { data, error } = await supabase
+    .from("touch_events")
+    .select("channel, occurred_at")
+    .eq("account_id", accountId)
+    .eq("is_meaningful", true)
+    .not("channel", "is", null)
+    .order("occurred_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  return (data && data.channel) || null;
 }
 
 // Upsert a reconciliation-queue row. ignoreDuplicates so a re-sync never

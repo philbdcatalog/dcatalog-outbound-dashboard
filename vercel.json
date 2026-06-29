@@ -3,6 +3,10 @@
     {
       "path": "/api/sync/zoho",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/sync/zoho-wins",
+      "schedule": "*/30 * * * *"
     }
   ]
 }
