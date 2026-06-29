@@ -7,6 +7,7 @@ const GOAL_FIELDS = [
   { key: "meeting_goal", label: "Meeting Goal", prefix: "" },
   { key: "opps_goal", label: "Opps Goal", prefix: "" },
   { key: "pipeline_goal", label: "Pipeline Goal", prefix: "$" },
+  { key: "won_goal", label: "Sales Won Goal", prefix: "$" },
 ];
 const COST_FIELDS = [
   { key: "cost_email", label: "Email (Instantly)" },
@@ -79,7 +80,7 @@ export default function GoalsForm({ initial }) {
     <div>
       <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted, margin: "22px 2px 10px" }}>Goals</div>
       <div style={card}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
           {GOAL_FIELDS.map(numberField)}
         </div>
       </div>

@@ -175,13 +175,12 @@ export default async function Dashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
         <Gauge label="Meetings Booked" value={f.meetings} goal={d.goals.meetings} display={fmt(f.meetings)} />
         <Gauge label="Opportunities Created" value={f.opps} goal={d.goals.opps} display={fmt(f.opps)} />
-        {/* Outbound closed revenue this quarter (won + is_outbound). Goal reuses
-            the quarterly revenue target for now (no dedicated won-revenue goal). */}
-        <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.pipeline} display={"$" + Math.round(d.outboundWon / 1000) + "K"} />
         {/* Pipeline Generated (definition B): outbound OPEN opportunities created
-            this quarter (Created_Time-based). Won has its own gauge; lost counts
-            toward neither. */}
+            this quarter (Created_Time-based). Goal = pipeline_goal. */}
         <Gauge label="Pipeline Generated" value={d.pipelineGenerated} goal={d.goals.pipeline} display={"$" + Math.round(d.pipelineGenerated / 1000) + "K"} />
+        {/* Outbound closed revenue this quarter (won + is_outbound). Goal =
+            won_goal (Sales Won Goal), distinct from the pipeline target. */}
+        <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.won} display={"$" + Math.round(d.outboundWon / 1000) + "K"} />
       </div>
 
       <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies, not contacts</span></div>
