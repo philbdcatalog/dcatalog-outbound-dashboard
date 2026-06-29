@@ -24,12 +24,12 @@ const VERTICAL_PALETTE = [
   "#487f4e", "#b5683f", "#7d5ba6",
 ];
 
-export default function TamSegments({ C, SHADOW, byIndustry, byVertical }) {
+export default function TamSegments({ C, SHADOW, byIndustry, byVertical, marketError }) {
   const [mode, setMode] = useState("industry"); // "industry" | "vertical"
   const [exportVertical, setExportVertical] = useState(""); // "" = all verticals
 
   const segments = mode === "industry" ? byIndustry : byVertical;
-  const total = segments.reduce((s, e) => s + e.tam, 0) || 1;
+  const totalMarket = segments.reduce((s, e) => s + e.total_market, 0) || 1;
 
   const colorFor = (seg, i) => {
     if (mode === "industry") return INDUSTRY_COLORS[seg.key] || FALLBACK[i % FALLBACK.length];
@@ -58,96 +58,117 @@ export default function TamSegments({ C, SHADOW, byIndustry, byVertical }) {
     </button>
   );
 
+  const modeWord = mode === "industry" ? "industry" : "vertical";
+
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, margin: "22px 2px 10px" }}>
-        <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted }}>Segmentation</div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, margin: "22px 2px 4px" }}>
+        <div>
+          <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted }}>
+            Market success &amp; whitespace by {modeWord}
+          </div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 4, maxWidth: 720 }}>
+            Owned = clients + wins. Remaining = market you don&apos;t own yet. Contacted / Meetings track outbound progress on the remaining.
+          </div>
+        </div>
         <div style={{ display: "inline-flex", border: `1px solid ${C.line}`, borderRadius: 9, overflow: "hidden", background: C.panel }}>
           {toggleBtn("industry", "Industry")}
           {toggleBtn("vertical", "Vertical")}
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-        <div style={panel}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 10 }}>
-            TAM composition by {mode}
+      {marketError ? (
+        <div style={{ ...panel, marginTop: 10, color: "#c4773a", fontSize: 13 }}>
+          Could not load market-segment views: {marketError}
+        </div>
+      ) : segments.length === 0 ? (
+        <div style={{ ...panel, marginTop: 10, color: C.inkSoft, fontSize: 13 }}>
+          No market segments to show yet.
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 10 }}>
+            <div style={panel}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 10 }}>
+                Market composition by {modeWord}
+              </div>
+              <CompositionDonut C={C} segments={segments} total={totalMarket} colorFor={colorFor} />
+            </div>
+            <div style={panel}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 10 }}>
+                Contact % of remaining (whitespace) by {modeWord}
+              </div>
+              <PenetrationBars C={C} segments={segments} colorFor={colorFor} />
+            </div>
           </div>
-          <CompositionDonut C={C} segments={segments} total={total} colorFor={colorFor} />
-        </div>
-        <div style={panel}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 10 }}>
-            Penetration % by {mode}
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "22px 2px 10px" }}>
+            <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted }}>
+              {mode === "industry" ? "Industry" : "Vertical"} Breakdown
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <select
+                value={exportVertical}
+                onChange={(e) => setExportVertical(e.target.value)}
+                title="Filter the uncontacted export to a single vertical"
+                style={{ fontSize: 12, padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.panel, color: C.ink, cursor: "pointer" }}
+              >
+                <option value="">All verticals</option>
+                {CANONICAL_VERTICALS.map((v) => (
+                  <option key={v} value={v} style={{ textTransform: "capitalize" }}>{v}</option>
+                ))}
+                <option value={NEEDS_REVIEW}>{NEEDS_REVIEW}</option>
+              </select>
+              <a
+                href={exportHref}
+                className="btnish"
+                style={{ background: C.navy, color: "#fff", fontSize: 12, fontWeight: 600, padding: "8px 14px", borderRadius: 9, textDecoration: "none", boxShadow: SHADOW }}
+              >
+                Export Uncontacted Targets (CSV)
+              </a>
+              <a
+                href="/api/tam/icp-crosstab"
+                className="btnish"
+                style={{ background: C.panel, color: C.navy, border: `1px solid ${C.navy}`, fontSize: 12, fontWeight: 600, padding: "8px 14px", borderRadius: 9, textDecoration: "none" }}
+              >
+                Export ICP Cross-tab (CSV)
+              </a>
+            </div>
           </div>
-          <PenetrationBars C={C} segments={segments} colorFor={colorFor} />
-        </div>
-      </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, margin: "22px 2px 10px" }}>
-        <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted }}>
-          {mode === "industry" ? "Industry" : "Vertical"} Breakdown
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <select
-            value={exportVertical}
-            onChange={(e) => setExportVertical(e.target.value)}
-            title="Filter the uncontacted export to a single vertical"
-            style={{ fontSize: 12, padding: "7px 10px", borderRadius: 9, border: `1px solid ${C.line}`, background: C.panel, color: C.ink, cursor: "pointer" }}
-          >
-            <option value="">All verticals</option>
-            {CANONICAL_VERTICALS.map((v) => (
-              <option key={v} value={v} style={{ textTransform: "capitalize" }}>{v}</option>
-            ))}
-            <option value={NEEDS_REVIEW}>{NEEDS_REVIEW}</option>
-          </select>
-          <a
-            href={exportHref}
-            className="btnish"
-            style={{ background: C.navy, color: "#fff", fontSize: 12, fontWeight: 600, padding: "8px 14px", borderRadius: 9, textDecoration: "none", boxShadow: SHADOW }}
-          >
-            Export Uncontacted Targets (CSV)
-          </a>
-          <a
-            href="/api/tam/icp-crosstab"
-            className="btnish"
-            style={{ background: C.panel, color: C.navy, border: `1px solid ${C.navy}`, fontSize: 12, fontWeight: 600, padding: "8px 14px", borderRadius: 9, textDecoration: "none" }}
-          >
-            Export ICP Cross-tab (CSV)
-          </a>
-        </div>
-      </div>
-
-      <div style={panel}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead><tr>
-            <th style={th}>{mode === "industry" ? "Industry" : "Vertical"}</th>
-            <th style={{ ...th, textAlign: "right" }}>TAM Companies</th>
-            <th style={{ ...th, textAlign: "right" }}>Contacted</th>
-            <th style={{ ...th, textAlign: "right" }}>Penetration %</th>
-            <th style={{ ...th, textAlign: "right" }}>Meetings</th>
-            <th style={{ ...th, textAlign: "right" }}>Wins</th>
-            <th style={{ ...th, textAlign: "right" }}>Clients</th>
-            <th style={{ ...th, textAlign: "right" }}>Market Owned %</th>
-          </tr></thead>
-          <tbody>
-            {segments.map((e, i) => (
-              <tr key={e.key}>
-                <td style={td}>
-                  <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: colorFor(e, i), marginRight: 8 }} />
-                  <span style={{ textTransform: "capitalize" }}>{e.label}</span>
-                </td>
-                <td style={numTd}>{fmt(e.tam)}</td>
-                <td style={numTd}>{fmt(e.contacted)}</td>
-                <td style={{ ...numTd, fontWeight: 700, color: C.navy }}>{pctStr(e.contacted, e.tam)}</td>
-                <td style={numTd}>{fmt(e.meetings)}</td>
-                <td style={numTd}>{fmt(e.wins)}</td>
-                <td style={numTd}>{fmt(e.clients)}</td>
-                <td style={{ ...numTd, fontWeight: 700, color: C.green }}>{pctStr(e.clients, e.tam)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+          <div style={panel}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead><tr>
+                <th style={th}>{mode === "industry" ? "Industry" : "Vertical"}</th>
+                <th style={{ ...th, textAlign: "right" }}>Total Market</th>
+                <th style={{ ...th, textAlign: "right" }}>Owned</th>
+                <th style={{ ...th, textAlign: "right" }}>Owned %</th>
+                <th style={{ ...th, textAlign: "right" }}>Remaining</th>
+                <th style={{ ...th, textAlign: "right" }}>Contacted</th>
+                <th style={{ ...th, textAlign: "right" }}>Contact %</th>
+                <th style={{ ...th, textAlign: "right" }}>Meetings</th>
+              </tr></thead>
+              <tbody>
+                {segments.map((e, i) => (
+                  <tr key={e.key}>
+                    <td style={td}>
+                      <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: colorFor(e, i), marginRight: 8 }} />
+                      <span style={{ textTransform: "capitalize" }}>{e.label}</span>
+                    </td>
+                    <td style={numTd}>{fmt(e.total_market)}</td>
+                    <td style={numTd}>{fmt(e.owned)}</td>
+                    <td style={{ ...numTd, fontWeight: 700, color: C.green }}>{pctStr(e.owned, e.total_market)}</td>
+                    <td style={numTd}>{fmt(e.remaining)}</td>
+                    <td style={numTd}>{fmt(e.contacted_remaining)}</td>
+                    <td style={{ ...numTd, fontWeight: 700, color: C.navy }}>{pctStr(e.contacted_remaining, e.remaining)}</td>
+                    <td style={numTd}>{fmt(e.meetings_remaining)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </>
   );
 }
@@ -163,11 +184,12 @@ function donutSlice(cx, cy, rIn, rOut, a0, a1) {
   return `M ${x0o} ${y0o} A ${rOut} ${rOut} 0 ${large} 1 ${x1o} ${y1o} L ${x1i} ${y1i} A ${rIn} ${rIn} 0 ${large} 0 ${x0i} ${y0i} Z`;
 }
 
+// Composition by total_market (the unified universe: TAM ∪ clients ∪ wins).
 function CompositionDonut({ C, segments, total, colorFor }) {
   const cx = 90, cy = 90, rOut = 80, rIn = 50;
   let a = -Math.PI / 2;
   const slices = segments.map((e, i) => {
-    const frac = e.tam / total;
+    const frac = e.total_market / total;
     const a0 = a;
     const a1 = a + frac * 2 * Math.PI;
     a = a1;
@@ -193,7 +215,7 @@ function CompositionDonut({ C, segments, total, colorFor }) {
           <div key={e.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.ink }}>
             <span style={{ width: 10, height: 10, borderRadius: 2, background: colorFor(e, i), flexShrink: 0 }} />
             <span style={{ textTransform: "capitalize", whiteSpace: "nowrap" }}>{e.label}</span>
-            <span style={{ color: C.muted, whiteSpace: "nowrap" }}>{pctStr(e.tam, total)} · {fmt(e.tam)}</span>
+            <span style={{ color: C.muted, whiteSpace: "nowrap" }}>{pctStr(e.total_market, total)} · {fmt(e.total_market)}</span>
           </div>
         ))}
       </div>
@@ -201,11 +223,11 @@ function CompositionDonut({ C, segments, total, colorFor }) {
   );
 }
 
-// Adaptive penetration bars: vertical columns for a handful of segments (keeps
-// the original 4-industry look), horizontal bars once there are many (the ~18
-// verticals), where long labels and bar counts stay legible.
+// Whitespace contact rate per segment: contacted_remaining / remaining. Adaptive:
+// vertical columns for a handful of segments (keeps the original look), horizontal
+// bars once there are many (the ~18 verticals) so labels stay legible.
 function PenetrationBars({ C, segments, colorFor }) {
-  const max = Math.max(1, ...segments.map((e) => pctNum(e.contacted, e.tam)));
+  const max = Math.max(1, ...segments.map((e) => pctNum(e.contacted_remaining, e.remaining)));
 
   if (segments.length > 7) {
     const rowH = 24, gap = 6, labelW = 140, top = 4;
@@ -214,7 +236,7 @@ function PenetrationBars({ C, segments, colorFor }) {
     return (
       <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
         {segments.map((e, i) => {
-          const v = pctNum(e.contacted, e.tam);
+          const v = pctNum(e.contacted_remaining, e.remaining);
           const y = top + i * (rowH + gap);
           const w = (v / max) * plotW;
           return (
@@ -240,7 +262,7 @@ function PenetrationBars({ C, segments, colorFor }) {
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
       {segments.map((e, i) => {
-        const v = pctNum(e.contacted, e.tam);
+        const v = pctNum(e.contacted_remaining, e.remaining);
         const cx = pad + slotW * (i + 0.5);
         const x = cx - barW / 2;
         const h = (v / max) * plotH;

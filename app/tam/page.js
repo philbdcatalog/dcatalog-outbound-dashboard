@@ -3,7 +3,6 @@ import TamClient from "./TamClient";
 import ClientUpload from "./ClientUpload";
 import TamSegments from "./TamSegments";
 import { C, card, SHADOW } from "../../lib/theme";
-import { verticalBucket } from "../../lib/verticals";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -35,7 +34,7 @@ async function loadTamRows(supabase) {
   for (let from = 0; ; from += size) {
     const { data, error } = await supabase
       .from("tam_companies")
-      .select("domain, industry, vertical")
+      .select("domain")
       .range(from, from + size - 1);
     if (error) throw error;
     rows.push(...(data || []));
@@ -44,15 +43,35 @@ async function loadTamRows(supabase) {
   return rows;
 }
 
-// Tally one TAM row into a segment map keyed by industry or vertical.
-function tally(map, key, label, f) {
-  let e = map.get(key);
-  if (!e) { e = { key, label, tam: 0, contacted: 0, meetings: 0, wins: 0, clients: 0 }; map.set(key, e); }
-  e.tam++;
-  if (f.c) e.contacted++;
-  if (f.m) e.meetings++;
-  if (f.w) e.wins++;
-  if (f.cl) e.clients++;
+// Read a market-segments rollup view. These views define the unified market
+// universe (TAM ∪ clients ∪ won deals, deduped by domain) and pre-compute every
+// number the breakdown table needs — we do NOT recompute any of this in JS.
+async function loadMarketView(supabase, view) {
+  const { data, error } = await supabase
+    .from(view)
+    .select("segment, total_market, owned, remaining, contacted_remaining, meetings_remaining");
+  if (error) throw error;
+  return data || [];
+}
+
+// Normalize a market view's rows for display: numeric coercion, a color key,
+// a human label (null/blank segment -> the supplied fallback), sorted by
+// total_market desc.
+function shapeMarket(rows, fallbackLabel) {
+  return (rows || [])
+    .map((r) => {
+      const seg = (r.segment ?? "").toString().trim();
+      return {
+        key: seg.toLowerCase() || fallbackLabel.toLowerCase(),
+        label: seg || fallbackLabel,
+        total_market: Number(r.total_market) || 0,
+        owned: Number(r.owned) || 0,
+        remaining: Number(r.remaining) || 0,
+        contacted_remaining: Number(r.contacted_remaining) || 0,
+        meetings_remaining: Number(r.meetings_remaining) || 0,
+      };
+    })
+    .sort((a, b) => b.total_market - a.total_market);
 }
 
 async function getTam() {
@@ -72,33 +91,20 @@ async function getTam() {
     // never reduced by client status — that math is untouched. Precedence only
     // governs the footprint reads (market owned / net-new addressable).
     let contacted = 0, meetings = 0, wins = 0, clientsInTam = 0, netNew = 0;
-    const indMap = new Map();
-    const verMap = new Map();
     const tamDomains = new Set();
 
     for (const r of rows) {
       const d = String(r.domain).toLowerCase();
       tamDomains.add(d);
       const c = contactedDomains.has(d);
-      const mt = meetingDomains.has(d);
       const w = wonDomains.has(d);
       const cl = clientDomains.has(d);
       if (c) contacted++;
-      if (mt) meetings++;
+      if (meetingDomains.has(d)) meetings++;
       if (w) wins++;
       if (cl) clientsInTam++;
       if (!cl && !c) netNew++; // net-new addressable: neither client nor contacted
-
-      const iKey = (r.industry || "").trim().toLowerCase() || "(unspecified)";
-      const iLabel = (r.industry || "").trim() || "Unspecified";
-      tally(indMap, iKey, iLabel, { c, m: mt, w, cl });
-
-      const vKey = verticalBucket(r.vertical);
-      tally(verMap, vKey, vKey, { c, m: mt, w, cl });
     }
-
-    const byIndustry = [...indMap.values()].sort((a, b) => b.tam - a.tam);
-    const byVertical = [...verMap.values()].sort((a, b) => b.tam - a.tam);
 
     // Off-list cleanup: touched accounts that are NOT on the TAM list, split into
     // clients you've touched (intentional footprint, not drift) vs non-TAM,
@@ -108,6 +114,16 @@ async function getTam() {
       if (tamDomains.has(d)) continue;
       if (clientDomains.has(d)) offlistClients++;
       else offlistDrift++;
+    }
+
+    // Unified-market breakdown comes from the pre-computed rollup views. Loaded
+    // non-fatally: a view hiccup must not blank the (TAM-based) cards above.
+    let marketByIndustry = [], marketByVertical = [], marketError = null;
+    try {
+      marketByIndustry = shapeMarket(await loadMarketView(supabase, "tam_market_segments_industry"), "Unspecified");
+      marketByVertical = shapeMarket(await loadMarketView(supabase, "tam_market_segments_vertical"), "Needs review");
+    } catch (e) {
+      marketError = e.message;
     }
 
     return {
@@ -120,8 +136,9 @@ async function getTam() {
       netNew,
       offlistClients,
       offlistDrift,
-      byIndustry,
-      byVertical,
+      marketByIndustry,
+      marketByVertical,
+      marketError,
     };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -215,7 +232,13 @@ export default async function TamPage() {
             />
           </div>
 
-          <TamSegments C={C} SHADOW={SHADOW} byIndustry={m.byIndustry} byVertical={m.byVertical} />
+          <TamSegments
+            C={C}
+            SHADOW={SHADOW}
+            byIndustry={m.marketByIndustry}
+            byVertical={m.marketByVertical}
+            marketError={m.marketError}
+          />
 
           <div style={seclabel}>Off-List Activity</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
