@@ -7,6 +7,7 @@ export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
 const fmt = (n) => (n ?? 0).toLocaleString();
+const fmtCurrency = (n) => "$" + Math.round(n ?? 0).toLocaleString();
 const pct = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(2) + "%" : "–");
 const fmtDate = (s) =>
   s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "—";
@@ -174,7 +175,12 @@ export default async function Dashboard() {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
         <Gauge label="Meetings Booked" value={f.meetings} goal={d.goals.meetings} display={fmt(f.meetings)} />
         <Gauge label="Opportunities Created" value={f.opps} goal={d.goals.opps} display={fmt(f.opps)} />
-        <Gauge label="Pipeline Generated" value={d.pipeline} goal={d.goals.pipeline} display={"$" + Math.round(d.pipeline / 1000) + "K"} />
+        {/* Outbound closed revenue this quarter (won + is_outbound). Replaces the
+            old "Pipeline Generated" gauge, which mislabeled summed won deals as
+            pipeline. True "Pipeline Generated" (open+won+lost outbound created
+            this quarter) returns as a 4th gauge in Phase 2, once open/lost sync.
+            Goal reuses the quarterly revenue (pipeline) target for now. */}
+        <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.pipeline} display={"$" + Math.round(d.outboundWon / 1000) + "K"} />
       </div>
 
       <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies, not contacts</span></div>
@@ -217,12 +223,16 @@ export default async function Dashboard() {
             {list.length === 0 ? (
               <div style={{ fontSize: 12, color: C.muted }}>No activity yet</div>
             ) : (
-              list.map((r, i) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "4px 0", borderBottom: i < list.length - 1 ? `1px solid ${C.line}` : "none" }}>
-                  <span style={{ color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.domain}</span>
-                  <span style={{ color: C.muted, flexShrink: 0, marginLeft: 8 }}>{fmtDate(r.date)}{r.channel ? ` · ${r.channel}` : ""}</span>
-                </div>
-              ))
+              <div style={{ maxHeight: 320, overflowY: "auto" }}>
+                {list.map((r, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "4px 0", borderBottom: i < list.length - 1 ? `1px solid ${C.line}` : "none" }}>
+                    <span style={{ color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.domain}</span>
+                    <span style={{ color: C.muted, flexShrink: 0, marginLeft: 8 }}>
+                      {r.amount != null ? `${fmtCurrency(r.amount)} · ` : ""}{fmtDate(r.date)}{r.channel ? ` · ${r.channel}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         ))}
