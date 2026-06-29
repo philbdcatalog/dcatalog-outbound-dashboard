@@ -35,25 +35,33 @@ export default function TamClient({ C }) {
   // Parse CSV -> normalized, domain-deduped rows + skipped count.
   function parseFile(f) {
     return new Promise((resolve, reject) => {
+      // PapaParse is a proper RFC-4180 CSV parser: it is quote-aware (commas
+      // inside "double quoted" fields are NOT treated as delimiters) and handles
+      // CRLF/LF/CR line endings. We never hand-split on commas. transformHeader
+      // strips a UTF-8 BOM from the first header and trims each header, so no
+      // header can carry a stray BOM or a trailing \r from CRLF files (which
+      // would otherwise break the lookup of the last column — "Vertical").
       Papa.parse(f, {
         header: true,
-        skipEmptyLines: true,
+        skipEmptyLines: "greedy",
+        transformHeader: (h) => (h == null ? h : h.replace(/^﻿/, "").trim()),
         complete: (res) => {
           const byDomain = new Map(); // dedupe on domain, last wins
           let skipped = 0;
           let total = 0;
+          // Fill diagnostics — how many parsed rows actually carried a value in
+          // each of the three trailing columns. Surfaced in the UI so a bad
+          // import is diagnosable from the parse step, not just the DB.
+          let nIndustry = 0, nSubindustry = 0, nVertical = 0;
+          const headers = (res.meta && res.meta.fields) || [];
+
           for (const row of res.data) {
             total++;
             // Case-insensitive header lookup: BOTH the index keys and the get()
             // argument are trim+lowercased, so "Vertical"/"vertical"/"VERTICAL"
-            // (and every other column) resolve regardless of export casing.
-            //
-            // Real exports sometimes carry the same column twice under different
-            // casing (a lowercase pipeline copy AND a capitalized display copy),
-            // where one copy is blank. A last-write-wins index let the blank
-            // duplicate clobber the real value — nulling industry/subindustry/
-            // vertical while single-copy columns (company, website…) were fine.
-            // So we keep the FIRST non-empty value for each normalized header.
+            // (and every other column) resolve regardless of export casing. Keep
+            // the FIRST non-empty value per normalized name so a blank duplicate
+            // column can't clobber a real value.
             const idx = {};
             for (const k of Object.keys(row)) {
               const key = k.trim().toLowerCase();
@@ -69,22 +77,35 @@ export default function TamClient({ C }) {
               skipped++;
               continue;
             }
+            const industry = clean(get("Industry"));
+            const subindustry = clean(get("Subindustry"));
+            const verticalRaw = clean(get("Vertical"));
+            if (industry) nIndustry++;
+            if (subindustry) nSubindustry++;
+            if (verticalRaw) nVertical++;
+
             byDomain.set(domain, {
               domain,
               company_name: clean(get("Company")),
               website_raw: clean(get("Website")),
-              industry: clean(get("Industry")),
-              subindustry: clean(get("Subindustry")),
+              industry,
+              subindustry,
               // Bucket vertical so blank / off-taxonomy values land as
               // "needs review" instead of NULL (matches read-side bucketing).
-              vertical: verticalBucket(get("Vertical")),
+              vertical: verticalBucket(verticalRaw),
               employees: toInt(get("Employees")),
               annual_revenue: toInt(get("Company Annual Revenue")),
               state: clean(get("Company State")),
               linkedin_url: clean(get("Company Linkedin")),
             });
           }
-          resolve({ rows: [...byDomain.values()], skipped, total });
+          resolve({
+            rows: [...byDomain.values()],
+            skipped,
+            total,
+            headers,
+            filled: { industry: nIndustry, subindustry: nSubindustry, vertical: nVertical },
+          });
         },
         error: (err) => reject(err),
       });
@@ -100,7 +121,7 @@ export default function TamClient({ C }) {
     }
     setBusy(true);
     try {
-      const { rows, skipped, total } = await parseFile(file);
+      const { rows, skipped, total, headers, filled } = await parseFile(file);
       const res = await fetch("/api/tam/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -112,7 +133,8 @@ export default function TamClient({ C }) {
         setBusy(false);
         return;
       }
-      setResult(json);
+      // Merge client-side parse diagnostics with the server's insert counts.
+      setResult({ ...json, headers, filled });
       setBusy(false);
       router.refresh(); // re-load the server penetration metrics
     } catch (err) {
@@ -204,6 +226,21 @@ export default function TamClient({ C }) {
           Imported {(result.inserted + result.updated).toLocaleString()} companies
           {" "}({result.inserted.toLocaleString()} new, {result.updated.toLocaleString()} updated,
           {" "}{result.skipped.toLocaleString()} skipped — no domain).
+          {result.filled && (
+            <div style={{ color: C.muted, fontSize: 12, marginTop: 6 }}>
+              Parsed {result.total?.toLocaleString?.() ?? result.total} rows ·{" "}
+              {(result.headers?.length || 0)} columns detected · values found:{" "}
+              industry {result.filled.industry.toLocaleString()},{" "}
+              subindustry {result.filled.subindustry.toLocaleString()},{" "}
+              vertical {result.filled.vertical.toLocaleString()}.
+              {result.filled.vertical === 0 && (result.headers?.length || 0) > 0 && (
+                <div style={{ color: "#c4773a", marginTop: 4 }}>
+                  No vertical values parsed. Detected columns:{" "}
+                  {result.headers.join(", ")}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
