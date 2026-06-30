@@ -153,8 +153,14 @@ export async function GET(request) {
         const ownerName = owner.name || rosterNameById.get(owner.id) || null;
 
         const stage = classifyStage(deal.Stage);
-        if (!stage) { dealsSkippedLegacy++; continue; } // LEGACY/unknown stage -> skip
         const stageDetail = zohoName(deal.Stage) || null; // exact Zoho stage string
+        // Per-roster-deal classification trace (roster set is small ~tens).
+        console.log(
+          `[classify-debug] name=${JSON.stringify(dealName)} owner=${JSON.stringify(ownerName)} ` +
+          `rawStage=${JSON.stringify(stageDetail)} classified=${stage || "null"} kept=${!!stage} ` +
+          `skipReason=${stage ? "none" : "legacy/unknown stage"}`
+        );
+        if (!stage) { dealsSkippedLegacy++; continue; } // LEGACY/unknown stage -> skip
         // Full payload + normalized owner_id/owner_name for queryability (stored
         // in raw — no schema change). Used for both deals and recon_queue rows.
         const rawWithOwner = { ...deal, owner_id: owner.id, owner_name: ownerName };
@@ -238,6 +244,9 @@ export async function GET(request) {
             raw: rawWithOwner,
           });
           counts.deals_queued++;
+          // Count queued deals in deals_by_stage too — open/lost deals route here
+          // (they rarely auto-qualify via touch), so without this they read as 0.
+          stageCounts[stage] = (stageCounts[stage] || 0) + 1;
         }
       } catch (e) {
         rowErrors.push(`deal ${deal && deal.id}: ${e.message}`);
