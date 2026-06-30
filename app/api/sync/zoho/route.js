@@ -1,7 +1,7 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain, domainFromEmail } from "../../../../lib/ingest";
 import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
-import { classifyStage, CURRENT_STAGES, accountTouchedBefore, writeDealPreservingOutbound } from "../../../../lib/zohoDeals";
+import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho
 // Scheduled PULL job (Vercel Cron, hourly). Pulls Closed Won deals and booked
@@ -113,28 +113,31 @@ export async function GET(request) {
     // lookups are capped, so the run can't hang.
     // ----------------------------------------------------------------------
     const DEAL_FIELDS = "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name";
-    const orEquals = (names) =>
-      names.length === 1
-        ? `(Stage:equals:${names[0]})`
-        : "(" + names.map((n) => `(Stage:equals:${n})`).join("or") + ")";
 
-    // Fetch one coarse bucket by exact stage. Non-fatal per bucket: a bad
-    // criteria in one must not lose the others — surface it and continue.
-    const fetchStageBucket = async (label, names) => {
+    const fetchDeals = async (label, criteria) => {
       try {
-        return await zohoSearchAll({ accessToken, module: "Deals", criteria: orEquals(names), fields: DEAL_FIELDS });
+        return await zohoSearchAll({ accessToken, module: "Deals", criteria, fields: DEAL_FIELDS });
       } catch (e) {
         rowErrors.push(`${label}-deals fetch: ${e.message}`);
         return [];
       }
     };
-    const [wonDeals, openDeals, lostDeals] = await Promise.all([
-      fetchStageBucket("won", CURRENT_STAGES.won),
-      fetchStageBucket("open", CURRENT_STAGES.open),
-      fetchStageBucket("lost", CURRENT_STAGES.lost),
+    // Fetch with SLASH-FREE criteria only, then classify CLIENT-SIDE. We do NOT
+    // filter by the open/lost stage NAMES server-side: several contain a slash
+    // ("Proposal/Negotiation", "Verbal Approval/Contract Signature") and a slash
+    // in a Zoho search criteria is unreliable — it was being ignored, so the
+    // by-stage fetch fell back to returning ALL deals (1,311, incl. ~1,241
+    // legacy). Instead we pull two slash-free buckets — Closed Won, and
+    // everything-not-won — and let classifyStage (the exact 7-stage allowlist) be
+    // the SINGLE authority: any stage outside the allowlist returns null and is
+    // skipped in the loop below. This is robust whether Zoho honors the criteria
+    // or not.
+    const [wonDeals, nonWonDeals] = await Promise.all([
+      fetchDeals("won", "(Stage:equals:Closed Won)"),
+      fetchDeals("non-won", "(Stage:not_equal:Closed Won)"),
     ]);
     const dealsById = new Map();
-    for (const d of [...wonDeals, ...openDeals, ...lostDeals]) if (d && d.id) dealsById.set(d.id, d);
+    for (const d of [...wonDeals, ...nonWonDeals]) if (d && d.id) dealsById.set(d.id, d);
     const deals = [...dealsById.values()];
     counts.deals_seen = deals.length;
 
