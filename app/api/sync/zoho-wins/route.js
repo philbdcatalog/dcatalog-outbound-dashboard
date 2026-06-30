@@ -1,6 +1,6 @@
 import { getServiceClient } from "../../../../lib/supabase";
-import { getZohoAccessToken, zohoListAll, resolveDealDomain } from "../../../../lib/zoho";
-import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner } from "../../../../lib/zohoDeals";
+import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
+import { accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho-wins
 // LIGHTWEIGHT, HIGH-CADENCE companion to /api/sync/zoho. Pulls ONLY current-
@@ -15,10 +15,10 @@ import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadN
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
-// The records GET can't filter server-side, so we page ALL deals then keep only
-// the team's current-quarter wins client-side. Give it headroom for the full
-// pull + per-deal contact lookups on the (few) kept wins.
-export const maxDuration = 120;
+// Scoped to the current quarter's Closed Won via the /search equals criteria
+// (that operator works under our scope — only not_equal/COQL broke), so the set
+// is small — 60s is plenty even with per-deal contact lookups.
+export const maxDuration = 60;
 
 const TEST_RE = /test/i;
 
@@ -75,24 +75,21 @@ export async function GET(request) {
     }
     if (rosterIds.size === 0) rowErrors.push("new_business_owner_ids empty/missing — all deals skipped by owner filter");
 
-    // Current calendar quarter start (UTC).
+    // Current calendar quarter start (UTC) as YYYY-MM-DD for the Zoho criteria.
     const now = new Date();
     const quarterStart = new Date(Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1));
+    const qStartStr = quarterStart.toISOString().slice(0, 10);
 
-    // Page ALL deals via the records GET (ZohoCRM.modules.READ — no coql/search
-    // scope issues), then keep only the team's CURRENT-QUARTER WINS client-side.
-    let deals = [];
-    if (rosterIds.size > 0) {
-      try {
-        deals = await zohoListAll({
-          accessToken,
-          module: "Deals",
-          fields: "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name,Owner",
-        });
-      } catch (e) {
-        rowErrors.push(`deals list fetch: ${e.message}`);
-      }
-    }
+    // LIGHTWEIGHT: only this quarter's Closed Won deals, via the /search equals
+    // criteria (equals works under our scope; only not_equal/COQL broke). Keeps
+    // the pull tiny — no need to page all ~2,500 deals every 30 min. Owner is
+    // still filtered CLIENT-SIDE below (the modules scope can't filter on it).
+    const deals = await zohoSearchAll({
+      accessToken,
+      module: "Deals",
+      criteria: `((Stage:equals:Closed Won)and(Closing_Date:greater_equal:${qStartStr}))`,
+      fields: "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name,Owner",
+    });
     counts.deals_seen = deals.length;
 
     for (const deal of deals) {
@@ -102,14 +99,9 @@ export async function GET(request) {
         if (TEST_RE.test(dealName) || TEST_RE.test(companyName)) continue;
 
         // OWNER filter: ingest only deals owned by a new-business rep (by ID).
+        // (Stage + current-quarter are already enforced by the search criteria.)
         const owner = dealOwner(deal);
         if (!owner.id || !rosterIds.has(owner.id)) { dealsSkippedOwner++; continue; }
-
-        // This cron handles ONLY won deals closed THIS quarter; the full sync
-        // owns open/lost and historical wins.
-        if (classifyStage(deal.Stage) !== "won") continue;
-        const closed = deal.Closing_Date ? new Date(deal.Closing_Date) : null;
-        if (!(closed && !isNaN(closed.getTime()) && closed >= quarterStart)) continue;
 
         // Full payload + normalized owner_id/owner_name for queryability (in raw).
         const rawWithOwner = { ...deal, owner_id: owner.id, owner_name: owner.name || rosterNameById.get(owner.id) || null };
