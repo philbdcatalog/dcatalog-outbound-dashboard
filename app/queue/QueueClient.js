@@ -49,7 +49,9 @@ export default function QueueClient({ initialRows, C }) {
   async function resolve(row, action) {
     setErrors((e) => ({ ...e, [row.id]: null }));
     setChanErrors((e) => ({ ...e, [row.id]: null }));
-    if (action === "approve" && !(domains[row.id] || "").trim()) {
+    // All three actions (outbound/inbound/other) graduate the record, so a
+    // domain is required for each.
+    if (!(domains[row.id] || "").trim()) {
       setErrors((e) => ({ ...e, [row.id]: "Enter a domain first." }));
       return;
     }
@@ -206,18 +208,29 @@ export default function QueueClient({ initialRows, C }) {
                   <button
                     type="button"
                     disabled={disabled}
-                    onClick={() => resolve(r, "approve")}
-                    style={btn(C.green, "#fff")}
+                    onClick={() => resolve(r, "outbound")}
+                    title="source = outbound · is_outbound true"
+                    style={btn(C.navy, "#fff")}
                   >
-                    {disabled ? "…" : "Add to outbound"}
+                    {disabled ? "…" : "Outbound"}
                   </button>{" "}
                   <button
                     type="button"
                     disabled={disabled}
-                    onClick={() => resolve(r, "reject")}
+                    onClick={() => resolve(r, "inbound")}
+                    title="source = inbound · is_outbound false"
+                    style={btn(C.green, "#fff")}
+                  >
+                    Inbound
+                  </button>{" "}
+                  <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => resolve(r, "other")}
+                    title="source = other · is_outbound false"
                     style={btn("#fff", C.inkSoft, `1px solid ${C.line}`)}
                   >
-                    Not outbound
+                    Other
                   </button>
                 </td>
               </tr>

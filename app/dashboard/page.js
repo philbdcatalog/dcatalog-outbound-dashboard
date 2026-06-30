@@ -160,6 +160,7 @@ export default async function Dashboard() {
             <span style={{ marginLeft: 7, background: C.navyTint, color: C.navy, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "2px 8px", lineHeight: 1.5 }}>{d.reconPending}</span>
           )}
         </a>
+        <a href="/inbound" className="navlink">Inbound</a>
         <a href="/tam" className="navlink">TAM</a>
         <a href="/goals" className="navlink">Goals</a>
         <a href="/api/logout" className="navlink navlink--muted" style={{ marginLeft: "auto" }}>Log out</a>
