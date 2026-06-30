@@ -24,19 +24,34 @@ import { companyDomainFromHeyReachLead, mapHeyReachEvent } from "../../../../lib
 export const dynamic = "force-dynamic";
 
 export async function POST(request) {
+  // 0) DIAGNOSTIC — UNCONDITIONAL: capture the COMPLETE raw request body FIRST,
+  //    before any auth / parse / branching, so EVERY inbound event (including
+  //    ones we later drop, or that fail auth/JSON) is visible in Vercel logs.
+  //    We read the body as text (not request.json()) so a malformed body is
+  //    still logged, and parse from this text below (the stream is single-use).
+  let rawBody = "";
+  try {
+    rawBody = await request.text();
+  } catch (e) {
+    rawBody = `<unreadable body: ${e.message}>`;
+  }
+  console.log("[heyreach] RAW PAYLOAD:", rawBody);
+
   // 1) Auth check (shared secret in query string).
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
   const expected = process.env.HEYREACH_WEBHOOK_SECRET;
   if (!expected || token !== expected) {
+    console.warn("[heyreach] DROP: unauthorized (token missing/mismatch)");
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  // 2) Parse body.
+  // 2) Parse body from the raw text read above.
   let payload;
   try {
-    payload = await request.json();
+    payload = JSON.parse(rawBody);
   } catch {
+    console.warn("[heyreach] DROP: invalid json ::", rawBody);
     return Response.json({ ok: false, error: "invalid json" }, { status: 400 });
   }
 
@@ -204,7 +219,10 @@ export async function POST(request) {
           external_id: externalId,
           contact_ident: profileUrl,
           rep_name: repName,
-          raw: payload,
+          // Store the full payload PLUS the resolved eventType under a normalized
+          // key, so `raw->>'eventType'` is populated on EVERY row (incl. 'sent')
+          // even though HeyReach's own envelope key may be event/type/etc.
+          raw: { ...p, eventType: eventType ?? null },
         },
         { onConflict: "tool,external_id", ignoreDuplicates: true }
       );
