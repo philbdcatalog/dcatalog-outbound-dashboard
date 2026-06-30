@@ -1,7 +1,7 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain, domainFromEmail } from "../../../../lib/ingest";
 import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
-import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound } from "../../../../lib/zohoDeals";
+import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwnerIds, dealOwner } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho
 // Scheduled PULL job (Vercel Cron, hourly). Pulls Closed Won deals and booked
@@ -112,7 +112,20 @@ export async function GET(request) {
     // Every Zoho request is time-bounded (fetchWithTimeout) and per-deal contact
     // lookups are capped, so the run can't hang.
     // ----------------------------------------------------------------------
-    const DEAL_FIELDS = "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name";
+    const DEAL_FIELDS = "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name,Owner";
+
+    // New-business owner roster (configurable in app_settings). A deal is
+    // ingested ONLY if its Owner.id is in this set AND its stage is current.
+    // Empty roster -> every deal is skipped by owner (safer than flooding).
+    let rosterIds = new Set();
+    try {
+      rosterIds = await loadNewBusinessOwnerIds(supabase);
+    } catch (e) {
+      rowErrors.push(`owner roster load: ${e.message}`);
+    }
+    if (rosterIds.size === 0) {
+      rowErrors.push("new_business_owner_ids empty/missing — all deals skipped by owner filter");
+    }
 
     const fetchDeals = async (label, criteria) => {
       try {
@@ -145,6 +158,7 @@ export async function GET(request) {
     // Beyond the cap we fail SOFT: leave the domain null and queue for a rep.
     const MAX_CONTACT_LOOKUPS = 40;
     let contactLookups = 0;
+    let dealsSkippedOwner = 0;
     let dealsSkippedLegacy = 0;
     let dealsStageUpdated = 0;
     const stageCounts = { open: 0, won: 0, lost: 0 }; // deals written/updated in `deals`, by stage
@@ -155,9 +169,18 @@ export async function GET(request) {
         const companyName = zohoName(deal.Account_Name);
         if (TEST_RE.test(dealName) || TEST_RE.test(companyName)) continue; // skip test data
 
+        // OWNER filter (client-side, robust): ingest ONLY deals owned by a
+        // new-business rep. Matched by Zoho owner ID (stable). Wrong-owner deals
+        // (Client Success, PMs, SDRs, …) are dropped before any stage/DB work.
+        const owner = dealOwner(deal);
+        if (!owner.id || !rosterIds.has(owner.id)) { dealsSkippedOwner++; continue; }
+
         const stage = classifyStage(deal.Stage);
         if (!stage) { dealsSkippedLegacy++; continue; } // LEGACY/unknown stage -> skip
         const stageDetail = zohoName(deal.Stage) || null; // exact Zoho stage string
+        // Full payload + normalized owner_id/owner_name for queryability (stored
+        // in raw — no schema change). Used for both deals and recon_queue rows.
+        const rawWithOwner = { ...deal, owner_id: owner.id, owner_name: owner.name };
 
         const isOpen = stage === "open";
         const closedAt = isOpen ? null : deal.Closing_Date ?? null;
@@ -179,7 +202,7 @@ export async function GET(request) {
             company_name: companyName || dealName || null,
             amount: deal.Amount ?? null,
             closed_at: closedAt,
-            raw: deal,
+            raw: rawWithOwner,
           }).eq("zoho_deal_id", deal.id);
           if (error) throw error;
           dealsStageUpdated++;
@@ -212,7 +235,7 @@ export async function GET(request) {
               stage_detail: stageDetail,
               amount: deal.Amount ?? null,
               closed_at: closedAt,
-              raw: deal,
+              raw: rawWithOwner,
             },
             () => true
           );
@@ -235,7 +258,7 @@ export async function GET(request) {
               : account
               ? "no qualifying outbound touch — rep to confirm"
               : "no account match for domain",
-            raw: deal,
+            raw: rawWithOwner,
           });
           counts.deals_queued++;
         }
@@ -365,7 +388,9 @@ export async function GET(request) {
       deals_fetched: deals.length,
       deals_by_stage: stageCounts,
       deals_stage_updated: dealsStageUpdated,
+      deals_skipped_owner: dealsSkippedOwner,
       deals_skipped_legacy: dealsSkippedLegacy,
+      roster_size: rosterIds.size,
       leads_error: leadsError,
     };
   } catch (err) {

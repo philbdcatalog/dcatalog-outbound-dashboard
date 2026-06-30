@@ -1,6 +1,6 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
-import { accountTouchedBefore, writeDealPreservingOutbound } from "../../../../lib/zohoDeals";
+import { accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwnerIds, dealOwner } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho-wins
 // LIGHTWEIGHT, HIGH-CADENCE companion to /api/sync/zoho. Pulls ONLY current-
@@ -57,9 +57,19 @@ export async function GET(request) {
 
   const counts = { deals_seen: 0, deals_matched: 0, deals_queued: 0, meetings_seen: 0, meetings_matched: 0, meetings_queued: 0 };
   const rowErrors = [];
+  let dealsSkippedOwner = 0;
 
   try {
     const accessToken = await getZohoAccessToken();
+
+    // New-business owner roster (configurable; same filter as the full sync).
+    let rosterIds = new Set();
+    try {
+      rosterIds = await loadNewBusinessOwnerIds(supabase);
+    } catch (e) {
+      rowErrors.push(`owner roster load: ${e.message}`);
+    }
+    if (rosterIds.size === 0) rowErrors.push("new_business_owner_ids empty/missing — all deals skipped by owner filter");
 
     // Current calendar quarter start (UTC) as YYYY-MM-DD for the Zoho criteria.
     const now = new Date();
@@ -71,7 +81,7 @@ export async function GET(request) {
       accessToken,
       module: "Deals",
       criteria: `((Stage:equals:Closed Won)and(Closing_Date:greater_equal:${qStartStr}))`,
-      fields: "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name",
+      fields: "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name,Owner",
     });
     counts.deals_seen = deals.length;
 
@@ -80,6 +90,12 @@ export async function GET(request) {
         const dealName = zohoName(deal.Deal_Name);
         const companyName = zohoName(deal.Account_Name);
         if (TEST_RE.test(dealName) || TEST_RE.test(companyName)) continue;
+
+        // OWNER filter: ingest only deals owned by a new-business rep (by ID).
+        const owner = dealOwner(deal);
+        if (!owner.id || !rosterIds.has(owner.id)) { dealsSkippedOwner++; continue; }
+        // Full payload + normalized owner_id/owner_name for queryability (in raw).
+        const rawWithOwner = { ...deal, owner_id: owner.id, owner_name: owner.name };
 
         // Already in `deals`? It cleared recon — just keep its fields fresh and
         // NEVER touch is_outbound / re-queue (stage stays 'won' here).
@@ -93,7 +109,7 @@ export async function GET(request) {
             company_name: companyName || dealName || null,
             amount: deal.Amount ?? null,
             closed_at: deal.Closing_Date ?? null,
-            raw: deal,
+            raw: rawWithOwner,
           }).eq("zoho_deal_id", deal.id);
           if (error) throw error;
           counts.deals_matched++;
@@ -119,7 +135,7 @@ export async function GET(request) {
               stage_detail: zohoName(deal.Stage) || null,
               amount: deal.Amount ?? null,
               closed_at: deal.Closing_Date ?? null,
-              raw: deal,
+              raw: rawWithOwner,
             },
             () => true
           );
@@ -142,7 +158,7 @@ export async function GET(request) {
               : account
               ? "no qualifying outbound touch — rep to confirm"
               : "no account match for domain",
-            raw: deal,
+            raw: rawWithOwner,
           });
           counts.deals_queued++;
         }
@@ -157,7 +173,7 @@ export async function GET(request) {
       error: rowErrors.length ? rowErrors.slice(0, 20).join("; ") : null,
     });
 
-    return Response.json({ ok: true, scope: "wins-current-quarter", ...counts, row_errors: rowErrors.length });
+    return Response.json({ ok: true, scope: "wins-current-quarter", ...counts, row_errors: rowErrors.length, debug: { deals_skipped_owner: dealsSkippedOwner } });
   } catch (err) {
     await finishRun(supabase, runId, { ...counts, finished_at: new Date().toISOString(), error: err.message });
     return Response.json({ ok: false, error: err.message, ...counts }, { status: 500 });
