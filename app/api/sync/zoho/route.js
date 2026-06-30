@@ -1,7 +1,7 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain, domainFromEmail } from "../../../../lib/ingest";
 import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
-import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound } from "../../../../lib/zohoDeals";
+import { classifyStage, CURRENT_STAGES, accountTouchedBefore, writeDealPreservingOutbound } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho
 // Scheduled PULL job (Vercel Cron, hourly). Pulls Closed Won deals and booked
@@ -86,59 +86,63 @@ export async function GET(request) {
     const accessToken = await getZohoAccessToken();
 
     // ----------------------------------------------------------------------
-    // DEALS — won (auto-attribute when confident) + open (always queued)
+    // DEALS — current-pipeline stages only (legacy stages skipped)
     //
-    // Stage model (classifyStage, substring): closed-won -> 'won', closed-lost
-    // -> 'lost', anything else -> 'open' (pipeline). We pull two sets BY STAGE
-    // (NOT by Created_Time — an open deal created last quarter is still open and
-    // must be ingested):
-    //   (a) Closed Won (any date) — wins.
-    //   (b) Open = NOT Closed Won AND NOT Closed Lost (any date) — full open
-    //       pipeline. Created_Time is ONLY a display filter for the Pipeline
-    //       Generated gauge sum (applied in aggregates), never an ingestion gate.
-    // Merged + de-duped by id. Lost deals are not ingested (no metric uses them).
+    // classifyStage uses an EXACT allowlist of the 7 current Zoho stages; any
+    // other Stage is LEGACY (Dead, Close, Quote, …, going back to 2015) and is
+    // skipped entirely — not ingested, not queued, not written. We fetch the
+    // three coarse buckets BY STAGE (so legacy never even comes back over the
+    // wire, and the old ~1,200-row queue flood is eliminated at the source):
+    //   won  = Closed Won
+    //   open = Needs Analysis | Solution Presented | Proposal/Negotiation |
+    //          Verbal Approval/Contract Signature   (by stage, ANY date — an open
+    //          deal created last quarter is still open; Created_Time is only a
+    //          DISPLAY scope for the gauge/queue, applied in the views)
+    //   lost = Closed Lost | No Decision
+    // Merged + de-duped by id. stage_detail captures the exact Zoho Stage string.
     //
     // Routing for a NEW deal (already-in-`deals` rows only get a stage refresh):
-    //   - won + matched account + qualifying 90-day touch -> auto-attribute,
-    //     INSERT is_outbound=true.
-    //   - won otherwise (this quarter) -> recon queue (deal_stage='won').
-    //   - open -> ALWAYS recon queue (deal_stage='open') for a rep to decide
-    //     is_outbound. We NEVER auto-set is_outbound on an open deal (it may be
-    //     inbound, e.g. Harold Import — the rep marks it Not Outbound).
+    //   - matched account + qualifying 90-day touch -> auto-attribute, INSERT
+    //     is_outbound=true (open/won/lost alike).
+    //   - otherwise -> recon queue tagged deal_stage, for a rep to decide
+    //     is_outbound (open opps land in the Opps lane).
+    // Quarter scoping is a VIEW concern (queue/dashboard filter by the lane's
+    // relevant date); ingestion is non-destructive.
     //
     // Every Zoho request is time-bounded (fetchWithTimeout) and per-deal contact
     // lookups are capped, so the run can't hang.
     // ----------------------------------------------------------------------
-    const now = new Date();
-    const quarterStart = new Date(Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1));
     const DEAL_FIELDS = "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name";
+    const orEquals = (names) =>
+      names.length === 1
+        ? `(Stage:equals:${names[0]})`
+        : "(" + names.map((n) => `(Stage:equals:${n})`).join("or") + ")";
 
-    // (a) wins — core; a failure here is fatal (caught by the outer handler).
-    const wonDeals = await zohoSearchAll({ accessToken, module: "Deals", criteria: "(Stage:equals:Closed Won)", fields: DEAL_FIELDS });
-    // (b) open pipeline by STAGE (any date). Non-fatal: a failure here must not
-    // lose the wins — surface it and continue.
-    let openDeals = [];
-    try {
-      openDeals = await zohoSearchAll({
-        accessToken,
-        module: "Deals",
-        criteria: "((Stage:not_equal:Closed Won)and(Stage:not_equal:Closed Lost))",
-        fields: DEAL_FIELDS,
-      });
-    } catch (e) {
-      rowErrors.push(`open-deals fetch: ${e.message}`);
-    }
+    // Fetch one coarse bucket by exact stage. Non-fatal per bucket: a bad
+    // criteria in one must not lose the others — surface it and continue.
+    const fetchStageBucket = async (label, names) => {
+      try {
+        return await zohoSearchAll({ accessToken, module: "Deals", criteria: orEquals(names), fields: DEAL_FIELDS });
+      } catch (e) {
+        rowErrors.push(`${label}-deals fetch: ${e.message}`);
+        return [];
+      }
+    };
+    const [wonDeals, openDeals, lostDeals] = await Promise.all([
+      fetchStageBucket("won", CURRENT_STAGES.won),
+      fetchStageBucket("open", CURRENT_STAGES.open),
+      fetchStageBucket("lost", CURRENT_STAGES.lost),
+    ]);
     const dealsById = new Map();
-    for (const d of [...wonDeals, ...openDeals]) if (d && d.id) dealsById.set(d.id, d);
+    for (const d of [...wonDeals, ...openDeals, ...lostDeals]) if (d && d.id) dealsById.set(d.id, d);
     const deals = [...dealsById.values()];
     counts.deals_seen = deals.length;
 
     // Cap on per-deal primary-contact email lookups (each is a Zoho round trip).
-    // Beyond the cap we fail SOFT: leave the domain null and queue for a rep,
-    // rather than blocking the whole run on hundreds of serial lookups.
+    // Beyond the cap we fail SOFT: leave the domain null and queue for a rep.
     const MAX_CONTACT_LOOKUPS = 40;
     let contactLookups = 0;
-    let dealsSkippedHistorical = 0;
+    let dealsSkippedLegacy = 0;
     let dealsStageUpdated = 0;
     const stageCounts = { open: 0, won: 0, lost: 0 }; // deals written/updated in `deals`, by stage
 
@@ -149,18 +153,29 @@ export async function GET(request) {
         if (TEST_RE.test(dealName) || TEST_RE.test(companyName)) continue; // skip test data
 
         const stage = classifyStage(deal.Stage);
+        if (!stage) { dealsSkippedLegacy++; continue; } // LEGACY/unknown stage -> skip
+        const stageDetail = zohoName(deal.Stage) || null; // exact Zoho stage string
 
-        // STAGE AUTO-UPDATE: already in `deals` -> refresh fields incl. stage,
-        // never re-queue, never write is_outbound / tool / channel.
+        const isOpen = stage === "open";
+        const closedAt = isOpen ? null : deal.Closing_Date ?? null;
+        // Lane-relevant date the views scope by: open -> Created_Time;
+        // won/lost -> Closing_Date (fall back so the row is never undated).
+        const laneDate = isOpen
+          ? deal.Created_Time ?? null
+          : deal.Closing_Date || deal.Created_Time || null;
+
+        // STAGE AUTO-UPDATE: already in `deals` -> refresh fields incl. stage +
+        // stage_detail, never re-queue, never write is_outbound / tool / channel.
         const { data: existing, error: exErr } = await supabase
           .from("deals").select("zoho_deal_id").eq("zoho_deal_id", deal.id).maybeSingle();
         if (exErr) throw exErr;
         if (existing) {
           const { error } = await supabase.from("deals").update({
             stage,
+            stage_detail: stageDetail,
             company_name: companyName || dealName || null,
             amount: deal.Amount ?? null,
-            closed_at: stage === "open" ? null : deal.Closing_Date ?? null,
+            closed_at: closedAt,
             raw: deal,
           }).eq("zoho_deal_id", deal.id);
           if (error) throw error;
@@ -177,37 +192,12 @@ export async function GET(request) {
         }
         const account = domain ? await findAccount(supabase, domain) : null;
 
-        if (stage === "open") {
-          // OPEN -> always the recon queue (Opps lane). The rep decides
-          // is_outbound; never auto-set it. Ingested regardless of date.
-          await queueRecon(supabase, {
-            kind: "deal",
-            deal_stage: "open",
-            zoho_id: deal.id,
-            source_module: "Deals",
-            company_name: companyName || dealName || null,
-            suggested_domain: domain,
-            amount: deal.Amount ?? null,
-            occurred_at: deal.Created_Time || null,
-            reason: domain ? "open opp — rep to confirm outbound" : "open opp, no domain — rep to confirm",
-            raw: deal,
-          });
-          counts.deals_queued++;
-          continue;
-        }
-
-        if (stage === "lost") continue; // not ingested (no metric uses lost)
-
-        // WON. Auto-attribute only when matched AND a qualifying 90-day touch
-        // exists; otherwise queue (this quarter only — historical wins are noise).
-        const closed = deal.Closing_Date ? new Date(deal.Closing_Date) : null;
-        const isCurrent = !closed || isNaN(closed.getTime()) || closed >= quarterStart;
         const ref = deal.Closing_Date || deal.Created_Time || null;
         const touched = account ? await accountTouchedBefore(supabase, account.id, ref) : false;
 
         if (account && touched) {
-          // Confident outbound win -> insert (is_outbound seeded true ONCE; the
-          // helper is race-safe and never overwrites is_outbound on a conflict).
+          // Auto-qualify via touch -> insert (is_outbound seeded true ONCE; the
+          // helper never overwrites is_outbound on a conflict).
           await writeDealPreservingOutbound(
             supabase,
             {
@@ -215,29 +205,28 @@ export async function GET(request) {
               domain,
               account_id: account.id,
               company_name: companyName || dealName || null,
-              stage: "won",
+              stage,
+              stage_detail: stageDetail,
               amount: deal.Amount ?? null,
-              closed_at: deal.Closing_Date ?? null,
+              closed_at: closedAt,
               raw: deal,
             },
             () => true
           );
           counts.deals_matched++;
-          stageCounts.won++;
+          stageCounts[stage] = (stageCounts[stage] || 0) + 1;
         } else {
-          if (!isCurrent) {
-            dealsSkippedHistorical++;
-            continue;
-          }
+          // Recon queue, tagged deal_stage + stage_detail, scoped by laneDate.
           await queueRecon(supabase, {
             kind: "deal",
-            deal_stage: "won",
+            deal_stage: stage,
+            stage_detail: stageDetail,
             zoho_id: deal.id,
             source_module: "Deals",
             company_name: companyName || dealName || null,
             suggested_domain: domain,
             amount: deal.Amount ?? null,
-            occurred_at: deal.Closing_Date || deal.Created_Time || null,
+            occurred_at: laneDate,
             reason: !domain
               ? "no website/domain on deal"
               : account
@@ -373,7 +362,7 @@ export async function GET(request) {
       deals_fetched: deals.length,
       deals_by_stage: stageCounts,
       deals_stage_updated: dealsStageUpdated,
-      deals_skipped_historical: dealsSkippedHistorical,
+      deals_skipped_legacy: dealsSkippedLegacy,
       leads_error: leadsError,
     };
   } catch (err) {

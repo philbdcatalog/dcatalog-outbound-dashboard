@@ -43,7 +43,7 @@ export async function POST(request) {
     // Load the queue row.
     const { data: row, error: rowErr } = await supabase
       .from("zoho_recon_queue")
-      .select("id, kind, deal_stage, zoho_id, company_name, amount, occurred_at, raw, status")
+      .select("id, kind, deal_stage, stage_detail, zoho_id, company_name, amount, occurred_at, raw, status")
       .eq("id", id)
       .single();
     if (rowErr || !row) {
@@ -106,6 +106,7 @@ export async function POST(request) {
             account_id: account.id,
             company_name: row.company_name || null,
             stage,
+            stage_detail: row.stage_detail || null,
             amount: row.amount ?? null,
             closed_at: closedAt,
             tool: dealTool || null,

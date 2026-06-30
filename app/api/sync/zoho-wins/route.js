@@ -89,6 +89,7 @@ export async function GET(request) {
         if (existing) {
           const { error } = await supabase.from("deals").update({
             stage: "won",
+            stage_detail: zohoName(deal.Stage) || null,
             company_name: companyName || dealName || null,
             amount: deal.Amount ?? null,
             closed_at: deal.Closing_Date ?? null,
@@ -115,6 +116,7 @@ export async function GET(request) {
               account_id: account.id,
               company_name: companyName || dealName || null,
               stage: "won",
+              stage_detail: zohoName(deal.Stage) || null,
               amount: deal.Amount ?? null,
               closed_at: deal.Closing_Date ?? null,
               raw: deal,
@@ -128,6 +130,7 @@ export async function GET(request) {
           await queueRecon(supabase, {
             kind: "deal",
             deal_stage: "won",
+            stage_detail: zohoName(deal.Stage) || null,
             zoho_id: deal.id,
             source_module: "Deals",
             company_name: companyName || dealName || null,

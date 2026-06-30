@@ -173,8 +173,8 @@ export default async function Dashboard() {
 
       <div style={seclabel}>Output This Quarter</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
-        <Gauge label="Meetings Booked" value={f.meetings} goal={d.goals.meetings} display={fmt(f.meetings)} />
-        <Gauge label="Opportunities Created" value={f.opps} goal={d.goals.opps} display={fmt(f.opps)} />
+        <Gauge label="Meetings Booked" value={d.meetingsThisQuarter} goal={d.goals.meetings} display={fmt(d.meetingsThisQuarter)} />
+        <Gauge label="Opportunities Created" value={d.oppsThisQuarter} goal={d.goals.opps} display={fmt(d.oppsThisQuarter)} />
         {/* Pipeline Generated (definition B): outbound OPEN opportunities created
             this quarter (Created_Time-based). Goal = pipeline_goal. */}
         <Gauge label="Pipeline Generated" value={d.pipelineGenerated} goal={d.goals.pipeline} display={"$" + Math.round(d.pipelineGenerated / 1000) + "K"} />

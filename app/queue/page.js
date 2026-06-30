@@ -6,13 +6,24 @@ export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
+// Start of the current calendar quarter (UTC). The board resets each quarter:
+// queue rows are scoped to this quarter by occurred_at, which the sync sets to
+// each lane's relevant date (open -> Created_Time, won/lost -> close date,
+// meeting -> booked date). Pre-quarter rows (incl. legacy junk with old dates)
+// stay in the DB but don't show — non-destructive.
+function currentQuarterStartISO() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), Math.floor(now.getUTCMonth() / 3) * 3, 1)).toISOString();
+}
+
 async function getPending() {
   try {
     const supabase = getServiceClient();
     const { data, error } = await supabase
       .from("zoho_recon_queue")
-      .select("id, kind, deal_stage, company_name, suggested_domain, amount, occurred_at, zoho_id")
+      .select("id, kind, deal_stage, stage_detail, company_name, suggested_domain, amount, occurred_at, zoho_id")
       .eq("status", "pending")
+      .gte("occurred_at", currentQuarterStartISO())
       .order("occurred_at", { ascending: false });
     if (error) return { ok: false, error: error.message };
     return { ok: true, rows: data || [] };
