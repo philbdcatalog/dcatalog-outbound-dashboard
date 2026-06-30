@@ -122,7 +122,7 @@ export default async function Dashboard() {
   if (!d.ok) {
     return (
       <main style={{ maxWidth: 1180, margin: "0 auto", padding: 32 }}>
-        <h1 style={{ color: C.navy }}>Outbound Dashboard</h1>
+        <h1 style={{ color: C.navy }}>GTM Dashboard</h1>
         <p style={{ color: "#e05a4d" }}>Could not load data: {d.error}</p>
       </main>
     );
@@ -143,7 +143,7 @@ export default async function Dashboard() {
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
         <div>
-          <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: 0 }}>Outbound Dashboard</h1>
+          <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: 0 }}>GTM Dashboard</h1>
           <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>Multi-channel and account-based · Instantly, HeyReach, JustCall, Lemlist</div>
         </div>
         <div style={{ background: C.navy, color: "#fff", borderRadius: 10, padding: "9px 16px", textAlign: "right", boxShadow: SHADOW }}>
@@ -326,8 +326,8 @@ export default async function Dashboard() {
         totalKey="meetings"
         subKey="opps"
         totalColor={C.navy}
-        subColor={C.navyDeep}
-        legend={[{ label: "Meetings booked", color: C.navy }, { label: "Became opps", color: C.navyDeep }]}
+        subColor={C.linkedin}
+        legend={[{ label: "Meetings booked", color: C.navy }, { label: "Became opps", color: C.linkedin }]}
         C={C}
       />
 

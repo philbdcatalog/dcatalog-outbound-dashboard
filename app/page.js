@@ -28,7 +28,7 @@ export default async function Home() {
   return (
     <main style={{ maxWidth: 680, margin: "0 auto", padding: "64px 24px" }}>
       <h1 style={{ fontSize: 28, color: "#3a4d8f", marginBottom: 4 }}>
-        Outbound Dashboard
+        GTM Dashboard
       </h1>
       <p style={{ color: "#5b6781", marginTop: 0 }}>
         Setup check — confirms the app can reach the database.

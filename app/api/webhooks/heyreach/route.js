@@ -55,19 +55,34 @@ export async function POST(request) {
   const rawTimestamp =
     p.time || p.timestamp || p.createdAt || p.created_at || p.eventTime || p.occurredAt;
 
+  // Log every inbound event type so we can confirm in Vercel logs whether
+  // HeyReach is actually sending reply events (the reply path was never verified
+  // against a real reply). If replies never show up here, the fix is enabling
+  // the reply event in HeyReach's webhook config — not in this handler.
+  console.log("[heyreach] event received:", eventType || "(none)");
+
   // 3) Map the event. Untracked events => acknowledge 200 so HeyReach doesn't
   //    retry, but record nothing.
   const mapped = mapHeyReachEvent(eventType);
   if (!mapped) {
+    console.log("[heyreach] event NOT tracked (no mapping):", eventType || "(none)");
     return Response.json({ ok: true, skipped: true, reason: "event not tracked", eventType: eventType || null });
   }
 
   // LinkedIn profile URL is the lead identifier (analogous to email for
   // Instantly). Kept on the touch_event as contact_ident regardless of whether
   // we can resolve a company domain.
+  // Reply payloads can nest the lead/profile differently than sent/connect
+  // payloads (the reply path was never verified), so probe broadly — lead
+  // object, a few common message containers, and the top level.
+  const msg = p.message || p.conversation || p.inbox || {};
   const profileUrl =
-    (lead && (lead.profileUrl || lead.profile_url || lead.linkedInProfileUrl || lead.linkedinUrl)) ||
+    (lead && (lead.profileUrl || lead.profile_url || lead.linkedInProfileUrl || lead.linkedinUrl || lead.linkedin_url || lead.publicProfileUrl)) ||
+    (msg && (msg.profileUrl || msg.profile_url || msg.linkedinUrl)) ||
+    (p.from && (p.from.profileUrl || p.from.linkedinUrl)) ||
     p.profileUrl ||
+    p.linkedInProfileUrl ||
+    p.linkedinUrl ||
     null;
 
   // Rep (outreach owner) — the LinkedIn sender's full name. Matches by full name
@@ -77,17 +92,43 @@ export async function POST(request) {
     p.senderName ||
     null;
 
+  const supabase = getServiceClient();
+
   // 4) Resolve company domain. BEST-EFFORT for LinkedIn (see helper):
   //    explicit website/domain field -> custom field -> work-email domain.
-  const domain = companyDomainFromHeyReachLead(lead);
+  let domain = companyDomainFromHeyReachLead(lead);
+
+  // RECOVERY: a reply/connection-accepted arrives AFTER a sent/connect that
+  // already resolved this lead's company domain. Reply payloads often DON'T
+  // carry the company website (which is why replies were being dropped while
+  // sent/connected weren't), but they do identify the LinkedIn profile. So if we
+  // can't resolve a domain from THIS payload, reuse the domain from a prior
+  // HeyReach touch for the same profile URL. This is the actual reply-ingestion
+  // fix: a reply from a lead we already contacted is no longer dropped.
+  if (!domain && profileUrl) {
+    try {
+      const { data: prior } = await supabase
+        .from("touch_events")
+        .select("domain")
+        .eq("tool", "heyreach")
+        .eq("contact_ident", profileUrl)
+        .not("domain", "is", null)
+        .order("occurred_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (prior && prior.domain) domain = prior.domain;
+    } catch (e) {
+      console.error("[heyreach] prior-touch domain recovery failed:", e.message);
+    }
+  }
+
   if (!domain) {
-    // No usable company domain. HeyReach gives us a LinkedIn profile URL but no
-    // reliable key to map that to an existing account (accounts are keyed by
-    // domain, not LinkedIn URL), so we cannot safely create or attach an
-    // account. Acknowledge (no retry storm) and log the reason — a low LinkedIn
-    // match rate is expected and is itself a useful signal. The full payload is
-    // not stored in this path; once enrichment supplies a company domain these
-    // events become attributable.
+    // Still unresolvable. Log the FULL payload + eventType so we can inspect what
+    // HeyReach actually sends for this event (especially replies) and tighten
+    // parsing. Acknowledge 200 so HeyReach doesn't retry-storm.
+    console.warn(
+      `[heyreach] DROPPING event (no company domain) eventType=${eventType} kind=${mapped.kind} profileUrl=${profileUrl} :: ${JSON.stringify(payload)}`
+    );
     return Response.json({
       ok: true,
       skipped: true,
@@ -95,6 +136,10 @@ export async function POST(request) {
       profileUrl,
       eventType,
     });
+  }
+
+  if (mapped.kind === "reply") {
+    console.log(`[heyreach] REPLY ingesting for ${domain} (profileUrl=${profileUrl})`);
   }
 
   const occurredAt = rawTimestamp
@@ -108,8 +153,6 @@ export async function POST(request) {
     `${eventType}:${profileUrl || "noprofile"}:${campaignId || "nocampaign"}:${occurredAt}`;
 
   try {
-    const supabase = getServiceClient();
-
     // 5) Upsert the account by domain (create minimal row if new — never drop
     //    an event; enrichment fills company_name/industry later by domain).
     const { data: account, error: accErr } = await supabase

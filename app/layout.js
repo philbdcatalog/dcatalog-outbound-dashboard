@@ -4,7 +4,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], display: "swap" });
 
 export const metadata = {
-  title: "DCatalog Outbound Dashboard",
+  title: "DCatalog GTM Dashboard",
   description: "Outbound sales analytics — webhooks + Supabase + Vercel",
 };
 

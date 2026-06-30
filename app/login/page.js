@@ -19,7 +19,7 @@ export default function LoginPage({ searchParams }) {
         method="POST"
         style={{ background: C.panel, borderRadius: 14, border: `1px solid ${C.line}`, padding: 30, width: 330, boxShadow: SHADOW }}
       >
-        <h1 style={{ color: C.ink, fontSize: 22, fontWeight: 600, letterSpacing: -0.2, margin: "0 0 4px" }}>Outbound Dashboard</h1>
+        <h1 style={{ color: C.ink, fontSize: 22, fontWeight: 600, letterSpacing: -0.2, margin: "0 0 4px" }}>GTM Dashboard</h1>
         <div style={{ color: C.inkSoft, fontSize: 13.5, marginBottom: 18 }}>Enter the team password to continue.</div>
 
         <input type="hidden" name="next" value={next} />
