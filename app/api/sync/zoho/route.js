@@ -1,7 +1,7 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain, domainFromEmail } from "../../../../lib/ingest";
-import { getZohoAccessToken, zohoSearchAll, zohoCoqlAll, resolveDealDomain } from "../../../../lib/zoho";
-import { classifyStage, CURRENT_STAGES, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner } from "../../../../lib/zohoDeals";
+import { getZohoAccessToken, zohoSearchAll, zohoListAll, resolveDealDomain } from "../../../../lib/zoho";
+import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho
 // Scheduled PULL job (Vercel Cron, hourly). Pulls Closed Won deals and booked
@@ -86,19 +86,17 @@ export async function GET(request) {
     const accessToken = await getZohoAccessToken();
 
     // ----------------------------------------------------------------------
-    // DEALS — fetched via COQL: team owners + current stages in ONE query
+    // DEALS — fetched via the standard records GET (GET /crm/v8/Deals)
     //
-    // We pull deals with a single COQL query filtering BOTH Owner (the
-    // configurable new-business roster) AND Stage (the 7 current stages)
-    // server-side:
-    //   select ... from Deals where Owner in (<roster ids>) and Stage in
-    //     ('Needs Analysis', …, 'Closed Won', 'Closed Lost', 'No Decision')
-    // COQL handles quoted slashed stage values ('Proposal/Negotiation') and
-    // IN-lists, which the /search criteria does NOT — the prior two-bucket
-    // workaround's `(Stage:not_equal:Closed Won)` fetch returned NOTHING, so
-    // open + lost never came through. classifyStage still assigns coarse
-    // deal_stage client-side (won/open/lost). Empty roster -> no query (ingest
-    // nothing) rather than flood.
+    // We can't use /coql (needs coql.READ scope, which our token lacks ->
+    // OAUTH_SCOPE_MISMATCH) and the /search criteria can't filter reliably
+    // (`not_equal` on the Stage picklist returns nothing; slashed stage values
+    // are ignored). The records GET endpoint IS covered by ZohoCRM.modules.READ,
+    // but it can't filter server-side — so we page through ALL deals and filter
+    // CLIENT-SIDE in the loop below, keeping a deal only if BOTH its Owner.id is
+    // in the new-business roster AND classifyStage(Stage) is one of the 7 current
+    // stages. Everything else is skipped (deals_skipped_owner / _legacy). The
+    // kept set (3 owners x 7 stages) is tiny.
     //
     // Routing for a NEW deal (already-in-`deals` rows only get a stage refresh):
     //   - matched account + qualifying 90-day touch -> auto-attribute, INSERT
@@ -106,6 +104,7 @@ export async function GET(request) {
     //   - otherwise -> recon queue tagged deal_stage (open opps -> Opps lane).
     // Quarter scoping is a VIEW concern. Every request is time-bounded.
     // ----------------------------------------------------------------------
+    const DEAL_FIELDS = "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name,Owner";
 
     // New-business owner roster (configurable in app_settings).
     let rosterIds = new Set();
@@ -122,20 +121,13 @@ export async function GET(request) {
     if (rosterIds.size === 0) {
       rowErrors.push("new_business_owner_ids empty/missing — all deals skipped by owner filter");
     } else {
-      const ownerList = [...rosterIds].map((id) => `'${id}'`).join(",");
-      const stageList = [...CURRENT_STAGES.open, ...CURRENT_STAGES.won, ...CURRENT_STAGES.lost]
-        .map((s) => `'${s}'`)
-        .join(",");
-      const baseQuery =
-        `select Deal_Name, Amount, Closing_Date, Created_Time, Website, Account_Name, Stage, Contact_Name, Owner ` +
-        `from Deals where Owner in (${ownerList}) and Stage in (${stageList})`;
       try {
-        deals = await zohoCoqlAll({ accessToken, baseQuery });
+        deals = await zohoListAll({ accessToken, module: "Deals", fields: DEAL_FIELDS });
       } catch (e) {
-        rowErrors.push(`deals COQL fetch: ${e.message}`);
+        rowErrors.push(`deals list fetch: ${e.message}`);
       }
     }
-    console.log(`[zoho-sync] deals fetched via COQL: ${deals.length} (roster ${rosterIds.size})`);
+    console.log(`[zoho-sync] deals fetched via modules GET: ${deals.length} (roster ${rosterIds.size})`);
     counts.deals_seen = deals.length;
 
     // Cap on per-deal primary-contact email lookups (each is a Zoho round trip).
