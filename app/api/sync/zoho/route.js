@@ -1,7 +1,7 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain, domainFromEmail } from "../../../../lib/ingest";
-import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
-import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwnerIds, dealOwner } from "../../../../lib/zohoDeals";
+import { getZohoAccessToken, zohoSearchAll, zohoCoqlAll, resolveDealDomain } from "../../../../lib/zoho";
+import { classifyStage, CURRENT_STAGES, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho
 // Scheduled PULL job (Vercel Cron, hourly). Pulls Closed Won deals and booked
@@ -86,72 +86,56 @@ export async function GET(request) {
     const accessToken = await getZohoAccessToken();
 
     // ----------------------------------------------------------------------
-    // DEALS — current-pipeline stages only (legacy stages skipped)
+    // DEALS — fetched via COQL: team owners + current stages in ONE query
     //
-    // classifyStage uses an EXACT allowlist of the 7 current Zoho stages; any
-    // other Stage is LEGACY (Dead, Close, Quote, …, going back to 2015) and is
-    // skipped entirely — not ingested, not queued, not written. We fetch the
-    // three coarse buckets BY STAGE (so legacy never even comes back over the
-    // wire, and the old ~1,200-row queue flood is eliminated at the source):
-    //   won  = Closed Won
-    //   open = Needs Analysis | Solution Presented | Proposal/Negotiation |
-    //          Verbal Approval/Contract Signature   (by stage, ANY date — an open
-    //          deal created last quarter is still open; Created_Time is only a
-    //          DISPLAY scope for the gauge/queue, applied in the views)
-    //   lost = Closed Lost | No Decision
-    // Merged + de-duped by id. stage_detail captures the exact Zoho Stage string.
+    // We pull deals with a single COQL query filtering BOTH Owner (the
+    // configurable new-business roster) AND Stage (the 7 current stages)
+    // server-side:
+    //   select ... from Deals where Owner in (<roster ids>) and Stage in
+    //     ('Needs Analysis', …, 'Closed Won', 'Closed Lost', 'No Decision')
+    // COQL handles quoted slashed stage values ('Proposal/Negotiation') and
+    // IN-lists, which the /search criteria does NOT — the prior two-bucket
+    // workaround's `(Stage:not_equal:Closed Won)` fetch returned NOTHING, so
+    // open + lost never came through. classifyStage still assigns coarse
+    // deal_stage client-side (won/open/lost). Empty roster -> no query (ingest
+    // nothing) rather than flood.
     //
     // Routing for a NEW deal (already-in-`deals` rows only get a stage refresh):
     //   - matched account + qualifying 90-day touch -> auto-attribute, INSERT
     //     is_outbound=true (open/won/lost alike).
-    //   - otherwise -> recon queue tagged deal_stage, for a rep to decide
-    //     is_outbound (open opps land in the Opps lane).
-    // Quarter scoping is a VIEW concern (queue/dashboard filter by the lane's
-    // relevant date); ingestion is non-destructive.
-    //
-    // Every Zoho request is time-bounded (fetchWithTimeout) and per-deal contact
-    // lookups are capped, so the run can't hang.
+    //   - otherwise -> recon queue tagged deal_stage (open opps -> Opps lane).
+    // Quarter scoping is a VIEW concern. Every request is time-bounded.
     // ----------------------------------------------------------------------
-    const DEAL_FIELDS = "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name,Owner";
 
-    // New-business owner roster (configurable in app_settings). A deal is
-    // ingested ONLY if its Owner.id is in this set AND its stage is current.
-    // Empty roster -> every deal is skipped by owner (safer than flooding).
+    // New-business owner roster (configurable in app_settings).
     let rosterIds = new Set();
+    let rosterNameById = new Map();
     try {
-      rosterIds = await loadNewBusinessOwnerIds(supabase);
+      const roster = await loadNewBusinessOwners(supabase);
+      rosterIds = roster.ids;
+      rosterNameById = roster.nameById;
     } catch (e) {
       rowErrors.push(`owner roster load: ${e.message}`);
     }
+
+    let deals = [];
     if (rosterIds.size === 0) {
       rowErrors.push("new_business_owner_ids empty/missing — all deals skipped by owner filter");
-    }
-
-    const fetchDeals = async (label, criteria) => {
+    } else {
+      const ownerList = [...rosterIds].map((id) => `'${id}'`).join(",");
+      const stageList = [...CURRENT_STAGES.open, ...CURRENT_STAGES.won, ...CURRENT_STAGES.lost]
+        .map((s) => `'${s}'`)
+        .join(",");
+      const baseQuery =
+        `select Deal_Name, Amount, Closing_Date, Created_Time, Website, Account_Name, Stage, Contact_Name, Owner ` +
+        `from Deals where Owner in (${ownerList}) and Stage in (${stageList})`;
       try {
-        return await zohoSearchAll({ accessToken, module: "Deals", criteria, fields: DEAL_FIELDS });
+        deals = await zohoCoqlAll({ accessToken, baseQuery });
       } catch (e) {
-        rowErrors.push(`${label}-deals fetch: ${e.message}`);
-        return [];
+        rowErrors.push(`deals COQL fetch: ${e.message}`);
       }
-    };
-    // Fetch with SLASH-FREE criteria only, then classify CLIENT-SIDE. We do NOT
-    // filter by the open/lost stage NAMES server-side: several contain a slash
-    // ("Proposal/Negotiation", "Verbal Approval/Contract Signature") and a slash
-    // in a Zoho search criteria is unreliable — it was being ignored, so the
-    // by-stage fetch fell back to returning ALL deals (1,311, incl. ~1,241
-    // legacy). Instead we pull two slash-free buckets — Closed Won, and
-    // everything-not-won — and let classifyStage (the exact 7-stage allowlist) be
-    // the SINGLE authority: any stage outside the allowlist returns null and is
-    // skipped in the loop below. This is robust whether Zoho honors the criteria
-    // or not.
-    const [wonDeals, nonWonDeals] = await Promise.all([
-      fetchDeals("won", "(Stage:equals:Closed Won)"),
-      fetchDeals("non-won", "(Stage:not_equal:Closed Won)"),
-    ]);
-    const dealsById = new Map();
-    for (const d of [...wonDeals, ...nonWonDeals]) if (d && d.id) dealsById.set(d.id, d);
-    const deals = [...dealsById.values()];
+    }
+    console.log(`[zoho-sync] deals fetched via COQL: ${deals.length} (roster ${rosterIds.size})`);
     counts.deals_seen = deals.length;
 
     // Cap on per-deal primary-contact email lookups (each is a Zoho round trip).
@@ -174,13 +158,14 @@ export async function GET(request) {
         // (Client Success, PMs, SDRs, …) are dropped before any stage/DB work.
         const owner = dealOwner(deal);
         if (!owner.id || !rosterIds.has(owner.id)) { dealsSkippedOwner++; continue; }
+        const ownerName = owner.name || rosterNameById.get(owner.id) || null;
 
         const stage = classifyStage(deal.Stage);
         if (!stage) { dealsSkippedLegacy++; continue; } // LEGACY/unknown stage -> skip
         const stageDetail = zohoName(deal.Stage) || null; // exact Zoho stage string
         // Full payload + normalized owner_id/owner_name for queryability (stored
         // in raw — no schema change). Used for both deals and recon_queue rows.
-        const rawWithOwner = { ...deal, owner_id: owner.id, owner_name: owner.name };
+        const rawWithOwner = { ...deal, owner_id: owner.id, owner_name: ownerName };
 
         const isOpen = stage === "open";
         const closedAt = isOpen ? null : deal.Closing_Date ?? null;

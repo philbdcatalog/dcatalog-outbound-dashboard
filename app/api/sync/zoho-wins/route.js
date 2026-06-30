@@ -1,6 +1,6 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
-import { accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwnerIds, dealOwner } from "../../../../lib/zohoDeals";
+import { accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho-wins
 // LIGHTWEIGHT, HIGH-CADENCE companion to /api/sync/zoho. Pulls ONLY current-
@@ -64,8 +64,11 @@ export async function GET(request) {
 
     // New-business owner roster (configurable; same filter as the full sync).
     let rosterIds = new Set();
+    let rosterNameById = new Map();
     try {
-      rosterIds = await loadNewBusinessOwnerIds(supabase);
+      const roster = await loadNewBusinessOwners(supabase);
+      rosterIds = roster.ids;
+      rosterNameById = roster.nameById;
     } catch (e) {
       rowErrors.push(`owner roster load: ${e.message}`);
     }
@@ -95,7 +98,7 @@ export async function GET(request) {
         const owner = dealOwner(deal);
         if (!owner.id || !rosterIds.has(owner.id)) { dealsSkippedOwner++; continue; }
         // Full payload + normalized owner_id/owner_name for queryability (in raw).
-        const rawWithOwner = { ...deal, owner_id: owner.id, owner_name: owner.name };
+        const rawWithOwner = { ...deal, owner_id: owner.id, owner_name: owner.name || rosterNameById.get(owner.id) || null };
 
         // Already in `deals`? It cleared recon — just keep its fields fresh and
         // NEVER touch is_outbound / re-queue (stage stays 'won' here).
