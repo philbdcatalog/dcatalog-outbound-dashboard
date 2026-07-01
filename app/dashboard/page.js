@@ -1,6 +1,8 @@
 import { getDashboardData } from "../../lib/aggregates";
 import { TripleBars, MetricByToolCards } from "./charts";
 import { C, card, eyebrow, SHADOW } from "../../lib/theme";
+import { resolvePeriod, periodOptions } from "../../lib/quarter";
+import PeriodSelector from "../PeriodSelector";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -116,8 +118,9 @@ function ProgressRing({ label, value, goal, display }) {
   );
 }
 
-export default async function Dashboard() {
-  const d = await getDashboardData();
+export default async function Dashboard({ searchParams }) {
+  const period = resolvePeriod(searchParams?.period);
+  const d = await getDashboardData({ start: period.start, end: period.end });
 
   if (!d.ok) {
     return (
@@ -129,7 +132,6 @@ export default async function Dashboard() {
   }
 
   const f = d.funnel;
-  const fAll = d.funnelAllTime || d.funnel;
   const seclabel = eyebrow;
   const panel = card;
   // Lighter table header: soft gray bg + navy-ish text + thin bottom border
@@ -147,10 +149,7 @@ export default async function Dashboard() {
           <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: 0 }}>GTM Dashboard</h1>
           <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>Multi-channel and account-based · Instantly, HeyReach, JustCall, Lemlist</div>
         </div>
-        <div style={{ background: C.navy, color: "#fff", borderRadius: 10, padding: "9px 16px", textAlign: "right", boxShadow: SHADOW }}>
-          <div style={{ fontWeight: 600, fontSize: 13.5 }}>{d.quarterBadge}</div>
-          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 1 }}>Live · outbound-sourced only</div>
-        </div>
+        <PeriodSelector value={period.value} options={periodOptions()} subtitle="Live · outbound-sourced only" />
       </div>
 
       <nav style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 16, paddingBottom: 12, borderBottom: `1px solid ${C.line}` }}>
@@ -173,7 +172,7 @@ export default async function Dashboard() {
         </div>
       )}
 
-      <div style={seclabel}>Output This Quarter</div>
+      <div style={seclabel}>Output <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{period.isAll ? "all time" : `Q${period.q} ${period.year}`}</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
         <Gauge label="Meetings Booked" value={d.meetingsThisQuarter} goal={d.goals.meetings} display={fmt(d.meetingsThisQuarter)} />
         <Gauge label="Opportunities Created" value={d.oppsThisQuarter} goal={d.goals.opps} display={fmt(d.oppsThisQuarter)} />
@@ -185,7 +184,7 @@ export default async function Dashboard() {
         <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.won} display={"$" + Math.round(d.outboundWon / 1000) + "K"} />
       </div>
 
-      <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies · this quarter</span></div>
+      <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies · {period.isAll ? "all time" : `Q${period.q} ${period.year}`}</span></div>
       <div style={panel}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr>
@@ -267,11 +266,11 @@ export default async function Dashboard() {
             })}
             <tr>
               <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>Total</td>
-              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(fAll.contacted)}</td>
-              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(fAll.replied)}</td>
-              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(fAll.meetings)}</td>
-              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(fAll.won)}</td>
-              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{pct(fAll.replied, fAll.contacted)}</td>
+              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(f.contacted)}</td>
+              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(f.replied)}</td>
+              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(f.meetings)}</td>
+              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(f.won)}</td>
+              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{pct(f.replied, f.contacted)}</td>
             </tr>
           </tbody>
         </table>

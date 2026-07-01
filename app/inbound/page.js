@@ -1,6 +1,8 @@
 import { getInboundData } from "../../lib/inbound";
 import { TripleBars } from "../dashboard/charts";
 import { C, card, eyebrow, SHADOW } from "../../lib/theme";
+import { resolvePeriod, periodOptions } from "../../lib/quarter";
+import PeriodSelector from "../PeriodSelector";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -96,9 +98,11 @@ function Legend({ items }) {
   );
 }
 
-export default async function InboundPage() {
-  const m = await getInboundData();
+export default async function InboundPage({ searchParams }) {
+  const period = resolvePeriod(searchParams?.period);
+  const m = await getInboundData({ start: period.start, end: period.end });
   const reconPending = m?.ok ? m.reconPending : 0;
+  const periodShort = period.isAll ? "all time" : `Q${period.q} ${period.year}`;
 
   const seclabel = eyebrow;
   const panel = card;
@@ -155,10 +159,7 @@ export default async function InboundPage() {
           <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: 0 }}>Inbound &amp; Marketing</h1>
           <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>Marketing-sourced pipeline &amp; channel performance · inbound residual, tagged in the reconciliation queue</div>
         </div>
-        <div style={{ background: C.navy, color: "#fff", borderRadius: 10, padding: "9px 16px", textAlign: "right", boxShadow: SHADOW }}>
-          <div style={{ fontWeight: 600, fontSize: 13.5 }}>2026 · Year to date</div>
-          <div style={{ fontSize: 11, opacity: 0.75, marginTop: 1 }}>Inbound-sourced only</div>
-        </div>
+        <PeriodSelector value={period.value} options={periodOptions()} subtitle="Inbound-sourced only" />
       </div>
 
       <nav style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 16, paddingBottom: 12, borderBottom: `1px solid ${C.line}` }}>
@@ -180,9 +181,9 @@ export default async function InboundPage() {
       {/* 1) HERO GAUGES */}
       <div style={seclabel}>Inbound-Sourced Contribution <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>real — populates as deals are tagged inbound</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
-        <Gauge label="Meetings Booked" value={g.meetings} goal={INBOUND_GOALS.meetings} display={fmt(g.meetings)} sub="YTD" />
-        <Gauge label="Pipeline Generated" value={g.pipeline} goal={INBOUND_GOALS.pipeline} display={usdK(g.pipeline)} sub={`${usd(g.pipeline)} open · YTD`} />
-        <Gauge label="Closed Won" value={g.won} goal={INBOUND_GOALS.won} display={usdK(g.won)} sub={`${usd(g.won)} won · YTD`} />
+        <Gauge label="Meetings Booked" value={g.meetings} goal={INBOUND_GOALS.meetings} display={fmt(g.meetings)} sub={periodShort} />
+        <Gauge label="Pipeline Generated" value={g.pipeline} goal={INBOUND_GOALS.pipeline} display={usdK(g.pipeline)} sub={`${usd(g.pipeline)} open · ${periodShort}`} />
+        <Gauge label="Closed Won" value={g.won} goal={INBOUND_GOALS.won} display={usdK(g.won)} sub={`${usd(g.won)} won · ${periodShort}`} />
       </div>
 
       {/* 2) FUNNEL */}
