@@ -1,16 +1,15 @@
 import { getServiceClient } from "../../lib/supabase";
 import QueueClient from "./QueueClient";
 import { C, SHADOW } from "../../lib/theme";
-import { currentQuarter } from "../../lib/quarter";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
-// The board resets each quarter: queue rows are scoped to the current quarter by
-// occurred_at (the sync sets it to each lane's relevant date). Pre-quarter rows
-// (incl. legacy junk with old dates) stay in the DB but don't show —
-// non-destructive. Quarter boundary comes from the shared helper.
+// A reconciliation backlog is NOT period-scoped: pending items persist until
+// they're worked (approved/rejected), so a quarter rollover must never hide
+// them. List ALL rows with status = 'pending' across every lane, regardless of
+// occurred_at / quarter.
 async function getPending() {
   try {
     const supabase = getServiceClient();
@@ -18,7 +17,6 @@ async function getPending() {
       .from("zoho_recon_queue")
       .select("id, kind, deal_stage, stage_detail, company_name, suggested_domain, amount, occurred_at, zoho_id")
       .eq("status", "pending")
-      .gte("occurred_at", currentQuarter().startISO)
       .order("occurred_at", { ascending: false });
     if (error) return { ok: false, error: error.message };
     return { ok: true, rows: data || [] };
