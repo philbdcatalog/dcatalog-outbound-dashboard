@@ -102,7 +102,7 @@ export default async function InboundPage({ searchParams }) {
   const period = resolvePeriod(searchParams?.period);
   const m = await getInboundData({ start: period.start, end: period.end });
   const reconPending = m?.ok ? m.reconPending : 0;
-  const periodShort = period.isAll ? "all time" : `Q${period.q} ${period.year}`;
+  const periodShort = period.label;
 
   const seclabel = eyebrow;
   const panel = card;

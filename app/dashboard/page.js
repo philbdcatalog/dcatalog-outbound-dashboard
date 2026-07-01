@@ -172,7 +172,7 @@ export default async function Dashboard({ searchParams }) {
         </div>
       )}
 
-      <div style={seclabel}>Output <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{period.isAll ? "all time" : `Q${period.q} ${period.year}`}</span></div>
+      <div style={seclabel}>Output <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{period.label}</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
         <Gauge label="Meetings Booked" value={d.meetingsThisQuarter} goal={d.goals.meetings} display={fmt(d.meetingsThisQuarter)} />
         <Gauge label="Opportunities Created" value={d.oppsThisQuarter} goal={d.goals.opps} display={fmt(d.oppsThisQuarter)} />
@@ -184,7 +184,7 @@ export default async function Dashboard({ searchParams }) {
         <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.won} display={"$" + Math.round(d.outboundWon / 1000) + "K"} />
       </div>
 
-      <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies · {period.isAll ? "all time" : `Q${period.q} ${period.year}`}</span></div>
+      <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies · {period.label}</span></div>
       <div style={panel}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr>
