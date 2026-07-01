@@ -129,6 +129,7 @@ export default async function Dashboard() {
   }
 
   const f = d.funnel;
+  const fAll = d.funnelAllTime || d.funnel;
   const seclabel = eyebrow;
   const panel = card;
   // Lighter table header: soft gray bg + navy-ish text + thin bottom border
@@ -147,7 +148,7 @@ export default async function Dashboard() {
           <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>Multi-channel and account-based · Instantly, HeyReach, JustCall, Lemlist</div>
         </div>
         <div style={{ background: C.navy, color: "#fff", borderRadius: 10, padding: "9px 16px", textAlign: "right", boxShadow: SHADOW }}>
-          <div style={{ fontWeight: 600, fontSize: 13.5 }}>Q2 2026 · Apr – Jun</div>
+          <div style={{ fontWeight: 600, fontSize: 13.5 }}>{d.quarterBadge}</div>
           <div style={{ fontSize: 11, opacity: 0.75, marginTop: 1 }}>Live · outbound-sourced only</div>
         </div>
       </div>
@@ -184,7 +185,7 @@ export default async function Dashboard() {
         <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.won} display={"$" + Math.round(d.outboundWon / 1000) + "K"} />
       </div>
 
-      <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies, not contacts</span></div>
+      <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies · this quarter</span></div>
       <div style={panel}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr>
@@ -266,11 +267,11 @@ export default async function Dashboard() {
             })}
             <tr>
               <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>Total</td>
-              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(f.contacted)}</td>
-              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(f.replied)}</td>
-              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(f.meetings)}</td>
-              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(f.won)}</td>
-              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{pct(f.replied, f.contacted)}</td>
+              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(fAll.contacted)}</td>
+              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(fAll.replied)}</td>
+              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(fAll.meetings)}</td>
+              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{fmt(fAll.won)}</td>
+              <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{pct(fAll.replied, fAll.contacted)}</td>
             </tr>
           </tbody>
         </table>

@@ -207,21 +207,21 @@ export async function GET(request) {
         if (account && touched) {
           // Auto-qualify via touch -> insert (is_outbound seeded true ONCE; the
           // helper never overwrites is_outbound on a conflict).
-          await writeDealPreservingOutbound(
-            supabase,
-            {
-              zoho_deal_id: deal.id,
-              domain,
-              account_id: account.id,
-              company_name: companyName || dealName || null,
-              stage,
-              stage_detail: stageDetail,
-              amount: deal.Amount ?? null,
-              closed_at: closedAt,
-              raw: rawWithOwner,
-            },
-            () => true
-          );
+          const insertFields = {
+            zoho_deal_id: deal.id,
+            domain,
+            account_id: account.id,
+            company_name: companyName || dealName || null,
+            stage,
+            stage_detail: stageDetail,
+            amount: deal.Amount ?? null,
+            closed_at: closedAt,
+            raw: rawWithOwner,
+          };
+          // created_at from the immutable Zoho creation time, so the funnel's
+          // opps (scoped by created_at) land in the correct quarter.
+          if (deal.Created_Time) insertFields.created_at = deal.Created_Time;
+          await writeDealPreservingOutbound(supabase, insertFields, () => true);
           counts.deals_matched++;
           stageCounts[stage] = (stageCounts[stage] || 0) + 1;
         } else {
