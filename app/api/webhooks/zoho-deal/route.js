@@ -1,6 +1,6 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain } from "../../../../lib/ingest";
-import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner } from "../../../../lib/zohoDeals";
+import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner, ensureMeetingForDeal } from "../../../../lib/zohoDeals";
 import { sourceChannelFromDealSource } from "../../../../lib/inbound";
 
 // POST /api/webhooks/zoho-deal
@@ -158,6 +158,18 @@ export async function POST(request) {
       // scopes this opp to the right quarter. Omit when absent (DB default).
       if (deal.Created_Time) fields.created_at = deal.Created_Time;
       await writeDealPreservingOutbound(supabase, fields, () => true);
+      // Ensure a meeting row for this deal's account (deduped by domain+quarter).
+      await ensureMeetingForDeal(supabase, {
+        zohoDealId: dealId,
+        domain,
+        accountId: account.id,
+        bookedAt: deal.meeting_at || deal.Created_Time || null,
+        source: null,
+        sourceChannel: sourceChannel !== "unknown" ? sourceChannel : null,
+        isOutbound: true,
+        tool: null,
+        channel: account.last_channel || null,
+      });
       return Response.json({ ok: true, action: "inserted-deal", stage });
     }
 

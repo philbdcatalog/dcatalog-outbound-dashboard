@@ -1,7 +1,7 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain, domainFromEmail } from "../../../../lib/ingest";
 import { getZohoAccessToken, zohoSearchAll, zohoListAll, resolveDealDomain } from "../../../../lib/zoho";
-import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner } from "../../../../lib/zohoDeals";
+import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner, ensureMeetingForDeal } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho
 // Scheduled PULL job (Vercel Cron, hourly). Pulls Closed Won deals and booked
@@ -222,6 +222,18 @@ export async function GET(request) {
           // opps (scoped by created_at) land in the correct quarter.
           if (deal.Created_Time) insertFields.created_at = deal.Created_Time;
           await writeDealPreservingOutbound(supabase, insertFields, () => true);
+          // Ensure a meeting row for this deal's account (deduped by domain+quarter).
+          await ensureMeetingForDeal(supabase, {
+            zohoDealId: deal.id,
+            domain,
+            accountId: account.id,
+            bookedAt: deal.meeting_at || deal.Created_Time || null,
+            source: null, // rep tags source in the queue; auto-attributed deals are outbound
+            sourceChannel: null,
+            isOutbound: true,
+            tool: null,
+            channel: account.last_channel || null,
+          });
           counts.deals_matched++;
           stageCounts[stage] = (stageCounts[stage] || 0) + 1;
         } else {

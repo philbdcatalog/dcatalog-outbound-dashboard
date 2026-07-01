@@ -240,7 +240,7 @@ export default async function InboundPage({ searchParams }) {
               list.map((r, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "4px 0", borderBottom: i < list.length - 1 ? `1px solid ${C.line}` : "none" }}>
                   <span style={{ color: C.ink, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
-                  <span style={{ color: C.muted, flexShrink: 0, marginLeft: 8 }}>{fmtDate(r.date)} · {CHANNEL_LABEL[r.channel] || r.channel}</span>
+                  <span style={{ color: C.muted, flexShrink: 0, marginLeft: 8 }}>{r.amount != null ? `${usd(r.amount)} · ` : ""}{fmtDate(r.date)} · {CHANNEL_LABEL[r.channel] || r.channel}</span>
                 </div>
               ))
             )}

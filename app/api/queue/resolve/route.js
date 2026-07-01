@@ -1,7 +1,7 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain } from "../../../../lib/ingest";
 import { SESSION_COOKIE, verifySessionToken } from "../../../../lib/auth";
-import { writeDealPreservingOutbound } from "../../../../lib/zohoDeals";
+import { writeDealPreservingOutbound, ensureMeetingForDeal } from "../../../../lib/zohoDeals";
 import { sourceChannelFromDealSource } from "../../../../lib/inbound";
 
 // POST /api/queue/resolve
@@ -117,6 +117,19 @@ export async function POST(request) {
       if (sourceChannel) fields.source_channel = sourceChannel;
       try {
         await writeDealPreservingOutbound(supabase, fields, () => isOutbound);
+        // Every graduated deal implies a meeting happened — ensure one exists
+        // (deduped by domain+quarter), so the feeds/charts populate too.
+        await ensureMeetingForDeal(supabase, {
+          zohoDealId: row.zoho_id,
+          domain,
+          accountId: account.id,
+          bookedAt: row.raw?.meeting_at || row.raw?.Created_Time || row.occurred_at,
+          source,
+          sourceChannel: sourceChannel || null,
+          isOutbound,
+          tool: dealTool || null,
+          channel: dealChannel || account.last_channel || null,
+        });
       } catch (error) {
         return Response.json({ ok: false, stage: "deal", error: error.message }, { status: 500 });
       }

@@ -1,6 +1,6 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
-import { accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner } from "../../../../lib/zohoDeals";
+import { accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner, ensureMeetingForDeal } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho-wins
 // LIGHTWEIGHT, HIGH-CADENCE companion to /api/sync/zoho. Pulls ONLY current-
@@ -148,6 +148,17 @@ export async function GET(request) {
             },
             () => true
           );
+          await ensureMeetingForDeal(supabase, {
+            zohoDealId: deal.id,
+            domain,
+            accountId: account.id,
+            bookedAt: deal.meeting_at || deal.Created_Time || deal.Closing_Date || null,
+            source: null,
+            sourceChannel: null,
+            isOutbound: true,
+            tool: null,
+            channel: account.last_channel || null,
+          });
           counts.deals_matched++;
         } else {
           // Unmatched OR no qualifying touch -> recon queue, tagged deal_stage
