@@ -11,7 +11,7 @@ async function getSettings() {
     const supabase = getServiceClient();
     const { data, error } = await supabase
       .from("app_settings")
-      .select("meeting_goal, opps_goal, pipeline_goal, won_goal, cost_email, cost_linkedin, cost_phone, cost_multichannel")
+      .select("meeting_goal, opps_goal, pipeline_goal, won_goal, inbound_meeting_goal, inbound_pipeline_goal, inbound_won_goal, cost_email, cost_linkedin, cost_phone, cost_multichannel")
       .limit(1)
       .maybeSingle();
     if (error) return { ok: false, error: error.message };

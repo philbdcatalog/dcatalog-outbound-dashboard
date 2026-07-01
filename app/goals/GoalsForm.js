@@ -9,6 +9,11 @@ const GOAL_FIELDS = [
   { key: "pipeline_goal", label: "Pipeline Goal", prefix: "$" },
   { key: "won_goal", label: "Sales Won Goal", prefix: "$" },
 ];
+const INBOUND_GOAL_FIELDS = [
+  { key: "inbound_meeting_goal", label: "Inbound Meeting Goal", prefix: "" },
+  { key: "inbound_pipeline_goal", label: "Inbound Pipeline Goal", prefix: "$" },
+  { key: "inbound_won_goal", label: "Inbound Won Goal", prefix: "$" },
+];
 const COST_FIELDS = [
   { key: "cost_email", label: "Email (Instantly)" },
   { key: "cost_linkedin", label: "LinkedIn (HeyReach)" },
@@ -18,7 +23,7 @@ const COST_FIELDS = [
 
 export default function GoalsForm({ initial }) {
   const start = {};
-  for (const f of [...GOAL_FIELDS, ...COST_FIELDS]) {
+  for (const f of [...GOAL_FIELDS, ...INBOUND_GOAL_FIELDS, ...COST_FIELDS]) {
     const v = initial?.[f.key];
     start[f.key] = v == null ? "" : String(v);
   }
@@ -82,6 +87,14 @@ export default function GoalsForm({ initial }) {
       <div style={card}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
           {GOAL_FIELDS.map(numberField)}
+        </div>
+      </div>
+
+      <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted, margin: "22px 2px 10px" }}>Inbound Goals</div>
+      <div style={card}>
+        <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 14 }}>Targets for the Inbound &amp; Marketing dashboard gauges.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+          {INBOUND_GOAL_FIELDS.map(numberField)}
         </div>
       </div>
 
