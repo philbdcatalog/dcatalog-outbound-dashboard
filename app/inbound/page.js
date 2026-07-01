@@ -180,9 +180,9 @@ export default async function InboundPage() {
       {/* 1) HERO GAUGES */}
       <div style={seclabel}>Inbound-Sourced Contribution <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>real — populates as deals are tagged inbound</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+        <Gauge label="Meetings Booked" value={g.meetings} goal={INBOUND_GOALS.meetings} display={fmt(g.meetings)} sub="YTD" />
         <Gauge label="Pipeline Generated" value={g.pipeline} goal={INBOUND_GOALS.pipeline} display={usdK(g.pipeline)} sub={`${usd(g.pipeline)} open · YTD`} />
         <Gauge label="Closed Won" value={g.won} goal={INBOUND_GOALS.won} display={usdK(g.won)} sub={`${usd(g.won)} won · YTD`} />
-        <Gauge label="Meetings Booked" value={g.meetings} goal={INBOUND_GOALS.meetings} display={fmt(g.meetings)} sub="YTD" />
       </div>
 
       {/* 2) FUNNEL */}
