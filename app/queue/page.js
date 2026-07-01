@@ -34,7 +34,7 @@ export default async function QueuePage() {
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
         <div>
-          <a href="/dashboard" className="navlink navlink--muted" style={{ marginLeft: -12, marginBottom: 4 }}>← Back to dashboard</a>
+          <a href="/" className="navlink navlink--muted" style={{ marginLeft: -12, marginBottom: 4 }}>← Back to dashboard</a>
           <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: "2px 0 0" }}>Reconciliation Queue</h1>
           <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>
             Zoho records that couldn&apos;t be auto-matched to an account · approve to graduate into outbound, or reject.

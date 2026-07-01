@@ -3,6 +3,7 @@ import { TripleBars } from "../dashboard/charts";
 import { C, card, eyebrow, SHADOW } from "../../lib/theme";
 import { resolvePeriod, periodOptions } from "../../lib/quarter";
 import PeriodSelector from "../PeriodSelector";
+import Nav from "../Nav";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -163,17 +164,7 @@ export default async function InboundPage({ searchParams }) {
         <PeriodSelector value={period.value} options={periodOptions()} subtitle="Inbound-sourced only" />
       </div>
 
-      <nav style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 16, paddingBottom: 12, borderBottom: `1px solid ${C.line}` }}>
-        <a href="/dashboard" className="navlink">Dashboard</a>
-        <a href="/queue" className="navlink">
-          Reconciliation Queue
-          {reconPending > 0 && <span style={{ marginLeft: 7, background: C.navyTint, color: C.navy, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "2px 8px", lineHeight: 1.5 }}>{reconPending}</span>}
-        </a>
-        <a href="/inbound" className="navlink navlink--active">Inbound</a>
-        <a href="/tam" className="navlink">TAM</a>
-        <a href="/goals" className="navlink">Goals</a>
-        <a href="/api/logout" className="navlink navlink--muted" style={{ marginLeft: "auto" }}>Log out</a>
-      </nav>
+      <Nav active="inbound" reconPending={reconPending} />
 
       {!ok && (
         <div style={{ ...panel, marginTop: 16, color: "#e05a4d", fontSize: 13 }}>Could not load inbound metrics: {m?.error}</div>

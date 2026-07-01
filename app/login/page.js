@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 function safeNext(next) {
   // Only allow relative same-site paths to avoid open-redirects.
   const v = Array.isArray(next) ? next[0] : next;
-  return typeof v === "string" && v.startsWith("/") && !v.startsWith("//") ? v : "/dashboard";
+  return typeof v === "string" && v.startsWith("/") && !v.startsWith("//") ? v : "/";
 }
 
 export default function LoginPage({ searchParams }) {

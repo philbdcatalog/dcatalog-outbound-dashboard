@@ -191,7 +191,7 @@ export default async function TamPage() {
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
         <div>
-          <a href="/dashboard" className="navlink navlink--muted" style={{ marginLeft: -12, marginBottom: 4 }}>← Back to dashboard</a>
+          <a href="/" className="navlink navlink--muted" style={{ marginLeft: -12, marginBottom: 4 }}>← Back to dashboard</a>
           <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: "2px 0 0" }}>Total Addressable Market</h1>
           <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>Market penetration across your TAM · lifetime, matched by company domain.</div>
         </div>

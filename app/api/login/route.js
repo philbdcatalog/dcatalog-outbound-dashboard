@@ -9,18 +9,18 @@ export const dynamic = "force-dynamic";
 const THIRTY_DAYS = 30 * 24 * 60 * 60; // seconds
 
 function safeNext(next, base) {
-  const v = typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+  const v = typeof next === "string" && next.startsWith("/") && !next.startsWith("//") ? next : "/";
   return new URL(v, base);
 }
 
 export async function POST(request) {
   const base = new URL(request.url);
   let password = "";
-  let next = "/dashboard";
+  let next = "/";
   try {
     const form = await request.formData();
     password = String(form.get("password") || "");
-    next = String(form.get("next") || "/dashboard");
+    next = String(form.get("next") || "/");
   } catch {
     // fall through to failure path
   }

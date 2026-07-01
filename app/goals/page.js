@@ -27,7 +27,7 @@ export default async function GoalsPage() {
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
       <div>
-        <a href="/dashboard" className="navlink navlink--muted" style={{ marginLeft: -12, marginBottom: 4 }}>← Back to dashboard</a>
+        <a href="/" className="navlink navlink--muted" style={{ marginLeft: -12, marginBottom: 4 }}>← Back to dashboard</a>
         <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: "2px 0 0" }}>Goals &amp; Costs</h1>
         <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>Quarter targets drive the dashboard gauges; per-channel spend drives cost per meeting.</div>
       </div>

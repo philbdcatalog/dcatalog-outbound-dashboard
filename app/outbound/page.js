@@ -1,8 +1,9 @@
 import { getDashboardData } from "../../lib/aggregates";
-import { TripleBars, MetricByToolCards } from "./charts";
+import { TripleBars, MetricByToolCards } from "../dashboard/charts";
 import { C, card, eyebrow, SHADOW } from "../../lib/theme";
 import { resolvePeriod, periodOptions } from "../../lib/quarter";
 import PeriodSelector from "../PeriodSelector";
+import Nav from "../Nav";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -14,8 +15,6 @@ const pct = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(2) + "%" : "–");
 const fmtDate = (s) =>
   s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "—";
 const chLabel = { email: "Email (Instantly)", linkedin: "LinkedIn (HeyReach)", phone: "Phone (JustCall)" };
-// By-tool display labels and dot colors. Unknown tools fall back to a
-// capitalized tool name / neutral ink.
 const TOOL_LABELS = {
   instantly: "Email (Instantly)",
   heyreach: "LinkedIn (HeyReach)",
@@ -29,15 +28,12 @@ const TOOL_SHORT = { instantly: "Instantly", heyreach: "HeyReach", justcall: "Ju
 const toolShortLabel = (t) =>
   TOOL_SHORT[t] || (t ? t.charAt(0).toUpperCase() + t.slice(1) : "Unknown");
 
-// Rep name -> headshot in /public/reps. Extend this as reps are added.
 const REP_PHOTOS = {
   "Traci Vrana": "/reps/traci.jpg",
   "Phil Benavides": "/reps/phil.jpg",
   "Jonathan Marin": "/reps/jonathan.jpg",
 };
 
-// Small circular avatar for the By Rep table. Falls back to an initials circle
-// when the rep has no mapped photo, so unmapped reps never break.
 function RepAvatar({ name }) {
   const size = 28;
   const base = { width: size, height: size, borderRadius: "50%", flexShrink: 0 };
@@ -60,9 +56,7 @@ function RepAvatar({ name }) {
   );
 }
 
-// Speedometer gauge — DEFAULT KPI. 3 muted zones give an instant on-track read
-// (clay / amber / sage), thin arc + thin needle, Inter typography. The colors
-// are modern data-viz mutes, not primaries.
+// Speedometer gauge — 3 muted zones (clay / amber / sage), thin arc + needle.
 function Gauge({ label, value, goal, display }) {
   const frac = goal > 0 ? Math.min(1, value / goal) : 0;
   const r = 72, cx = 90, cy = 92;
@@ -93,39 +87,14 @@ function Gauge({ label, value, goal, display }) {
   );
 }
 
-// NEW default KPI: a clean circular progress ring — a single navy arc filling
-// proportionally toward the goal on a light gray track, big value centered,
-// "Goal N · X%" below. Calm, scannable, no red/yellow/green.
-function ProgressRing({ label, value, goal, display }) {
-  const frac = goal > 0 ? Math.min(1, value / goal) : 0;
-  const size = 128, stroke = 11, r = (size - stroke) / 2, cx = size / 2, cy = size / 2;
-  const circ = 2 * Math.PI * r;
-  const dash = circ * frac;
-  const goalLabel = goal >= 1000 ? "$" + Math.round(goal / 1000) + "K" : goal;
-  return (
-    <div style={{ ...card, textAlign: "center" }}>
-      <div style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginBottom: 14 }}>{label}</div>
-      <svg viewBox={`0 0 ${size} ${size}`} width="128" height="128" style={{ maxWidth: 148 }}>
-        <circle cx={cx} cy={cy} r={r} fill="none" stroke={C.line} strokeWidth={stroke} />
-        <circle
-          cx={cx} cy={cy} r={r} fill="none" stroke={C.navy} strokeWidth={stroke} strokeLinecap="round"
-          strokeDasharray={`${dash} ${circ - dash}`} transform={`rotate(-90 ${cx} ${cy})`}
-        />
-        <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize={30} fontWeight={700} fill={C.ink}>{display}</text>
-      </svg>
-      <div style={{ fontSize: 12, color: C.muted, marginTop: 12 }}>Goal {goalLabel} · {Math.round(frac * 100)}%</div>
-    </div>
-  );
-}
-
-export default async function Dashboard({ searchParams }) {
+export default async function OutboundDashboard({ searchParams }) {
   const period = resolvePeriod(searchParams?.period);
   const d = await getDashboardData({ start: period.start, end: period.end });
 
   if (!d.ok) {
     return (
       <main style={{ maxWidth: 1180, margin: "0 auto", padding: 32 }}>
-        <h1 style={{ color: C.navy }}>GTM Dashboard</h1>
+        <h1 style={{ color: C.navy }}>Outbound</h1>
         <p style={{ color: "#e05a4d" }}>Could not load data: {d.error}</p>
       </main>
     );
@@ -134,8 +103,6 @@ export default async function Dashboard({ searchParams }) {
   const f = d.funnel;
   const seclabel = eyebrow;
   const panel = card;
-  // Lighter table header: soft gray bg + navy-ish text + thin bottom border
-  // (no heavy solid-navy bar). Used by every table for a consistent reskin.
   const th = { textAlign: "left", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: C.inkSoft, background: "#f4f6f9", padding: "11px 14px", borderBottom: `1px solid ${C.line}` };
   const td = { padding: "12px 14px", borderBottom: `1px solid ${C.line}`, color: C.ink };
   const numTd = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
@@ -146,25 +113,13 @@ export default async function Dashboard({ searchParams }) {
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
         <div>
-          <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: 0 }}>GTM Dashboard</h1>
+          <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: 0 }}>Outbound</h1>
           <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>Multi-channel and account-based · Instantly, HeyReach, JustCall, Lemlist</div>
         </div>
         <PeriodSelector value={period.value} options={periodOptions()} subtitle="Live · outbound-sourced only" />
       </div>
 
-      <nav style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 16, paddingBottom: 12, borderBottom: `1px solid ${C.line}` }}>
-        <a href="/dashboard" className="navlink navlink--active">Dashboard</a>
-        <a href="/queue" className="navlink">
-          Reconciliation Queue
-          {d.reconPending > 0 && (
-            <span style={{ marginLeft: 7, background: C.navyTint, color: C.navy, fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "2px 8px", lineHeight: 1.5 }}>{d.reconPending}</span>
-          )}
-        </a>
-        <a href="/inbound" className="navlink">Inbound</a>
-        <a href="/tam" className="navlink">TAM</a>
-        <a href="/goals" className="navlink">Goals</a>
-        <a href="/api/logout" className="navlink navlink--muted" style={{ marginLeft: "auto" }}>Log out</a>
-      </nav>
+      <Nav active="outbound" reconPending={d.reconPending} />
 
       {isEmpty && (
         <div style={{ ...panel, marginTop: 16, borderLeft: `3px solid ${C.amber || "#f2b134"}`, color: C.inkSoft, fontSize: 13 }}>
@@ -176,11 +131,7 @@ export default async function Dashboard({ searchParams }) {
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
         <Gauge label="Meetings Booked" value={d.meetingsThisQuarter} goal={d.goals.meetings} display={fmt(d.meetingsThisQuarter)} />
         <Gauge label="Opportunities Created" value={d.oppsThisQuarter} goal={d.goals.opps} display={fmt(d.oppsThisQuarter)} />
-        {/* Pipeline Generated (definition B): outbound OPEN opportunities created
-            this quarter (Created_Time-based). Goal = pipeline_goal. */}
         <Gauge label="Pipeline Generated" value={d.pipelineGenerated} goal={d.goals.pipeline} display={"$" + Math.round(d.pipelineGenerated / 1000) + "K"} />
-        {/* Outbound closed revenue this quarter (won + is_outbound). Goal =
-            won_goal (Sales Won Goal), distinct from the pipeline target. */}
         <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.won} display={"$" + Math.round(d.outboundWon / 1000) + "K"} />
       </div>
 
@@ -277,12 +228,7 @@ export default async function Dashboard({ searchParams }) {
       </div>
 
       <div style={seclabel}>Meetings, Opportunities &amp; Wins by Tool</div>
-      <MetricByToolCards
-        data={d.byToolMeetingsOppsWins}
-        toolColor={toolColor}
-        toolShortLabel={toolShortLabel}
-        C={C}
-      />
+      <MetricByToolCards data={d.byToolMeetingsOppsWins} toolColor={toolColor} toolShortLabel={toolShortLabel} C={C} />
 
       <div style={seclabel}>By Rep <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>Lemlist &amp; HeyReach</span></div>
       <div style={panel}>
