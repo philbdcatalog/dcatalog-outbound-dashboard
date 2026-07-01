@@ -107,29 +107,48 @@ function SourceBar({ buckets, values, fmtVal }) {
   );
 }
 
-// Weekly trend: won$ columns + meetings/opps lines with dashed targets.
-function WeeklyTrend({ data, targets, C }) {
+// Weekly line vs dashed target (one series). 13-week window, current week dotted.
+function WeeklyLine({ data, valueKey, target, color, C }) {
   const n = data.length || 1;
-  const pad = 8, top = 14, plotH = 110, baseY = top + plotH, W = 720, H = baseY + 26;
-  const slotW = (W - pad * 2) / n, barW = Math.min(26, slotW * 0.5);
-  const maxWon = Math.max(1, ...data.map((d) => d.won));
-  const maxCnt = Math.max(1, targets.meetings, targets.opps, ...data.map((d) => Math.max(d.meetings, d.opps)));
-  const yWon = (v) => baseY - (v / maxWon) * plotH;
-  const yCnt = (v) => baseY - (v / maxCnt) * plotH;
+  const pad = 8, top = 12, plotH = 96, baseY = top + plotH, W = 340, H = baseY + 22;
+  const slotW = (W - pad * 2) / n;
+  const max = Math.max(1, target || 0, ...data.map((d) => d[valueKey]));
+  const y = (v) => baseY - (v / max) * plotH;
   const cxOf = (i) => pad + slotW * (i + 0.5);
-  const linePath = (key) => data.map((d, i) => `${i === 0 ? "M" : "L"} ${cxOf(i)} ${yCnt(d[key])}`).join(" ");
+  const linePath = data.map((d, i) => `${i === 0 ? "M" : "L"} ${cxOf(i)} ${y(d[valueKey])}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
+      {target > 0 && <line x1={pad} y1={y(target)} x2={W - pad} y2={y(target)} stroke={color} strokeWidth={1} strokeDasharray="4 3" opacity={0.5} />}
+      <path d={linePath} fill="none" stroke={color} strokeWidth={2} strokeLinejoin="round" />
+      {data.map((d, i) => (
+        <circle key={i} cx={cxOf(i)} cy={y(d[valueKey])} r={d.current ? 2.6 : 2} fill={d.current ? "#fff" : color} stroke={color} strokeWidth={d.current ? 1.5 : 0} />
+      ))}
+      {data.map((d, i) => (i % 2 === 0 || d.current) && (
+        <text key={`l${i}`} x={cxOf(i)} y={baseY + 13} textAnchor="middle" fontSize={8} fill={C.muted}>{d.label}{d.current ? "*" : ""}</text>
+      ))}
+      <line x1={0} y1={baseY} x2={W} y2={baseY} stroke={C.line} strokeWidth={1} />
+    </svg>
+  );
+}
+
+// Weekly columns (one series, $). Current week rendered lighter.
+function WeeklyColumns({ data, valueKey, color, C }) {
+  const n = data.length || 1;
+  const pad = 8, top = 12, plotH = 96, baseY = top + plotH, W = 340, H = baseY + 22;
+  const slotW = (W - pad * 2) / n, barW = Math.min(18, slotW * 0.62);
+  const max = Math.max(1, ...data.map((d) => d[valueKey]));
+  const y = (v) => baseY - (v / max) * plotH;
+  const cxOf = (i) => pad + slotW * (i + 0.5);
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
       {data.map((d, i) => (
         <g key={i}>
-          <rect x={cxOf(i) - barW / 2} y={yWon(d.won)} width={barW} height={baseY - yWon(d.won)} fill={d.current ? "#b7c0da" : C.navy} rx={2} opacity={d.current ? 0.7 : 1} />
-          <text x={cxOf(i)} y={baseY + 14} textAnchor="middle" fontSize={8.5} fill={C.muted}>{d.label}{d.current ? "*" : ""}</text>
+          <rect x={cxOf(i) - barW / 2} y={y(d[valueKey])} width={barW} height={baseY - y(d[valueKey])} fill={d.current ? "#b7c0da" : color} rx={2} opacity={d.current ? 0.75 : 1} />
         </g>
       ))}
-      <line x1={pad} y1={yCnt(targets.meetings)} x2={W - pad} y2={yCnt(targets.meetings)} stroke={C.linkedin} strokeWidth={1} strokeDasharray="4 3" opacity={0.5} />
-      <line x1={pad} y1={yCnt(targets.opps)} x2={W - pad} y2={yCnt(targets.opps)} stroke={C.phone} strokeWidth={1} strokeDasharray="4 3" opacity={0.5} />
-      <path d={linePath("meetings")} fill="none" stroke={C.linkedin} strokeWidth={2} />
-      <path d={linePath("opps")} fill="none" stroke={C.phone} strokeWidth={2} />
+      {data.map((d, i) => (i % 2 === 0 || d.current) && (
+        <text key={`l${i}`} x={cxOf(i)} y={baseY + 13} textAnchor="middle" fontSize={8} fill={C.muted}>{d.label}{d.current ? "*" : ""}</text>
+      ))}
       <line x1={0} y1={baseY} x2={W} y2={baseY} stroke={C.line} strokeWidth={1} />
     </svg>
   );
@@ -269,7 +288,11 @@ export default async function NewBusinessPage({ searchParams }) {
       <div style={seclabel}>Sales Stage Analysis</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 14, marginBottom: 14 }}>
         {statCard("Avg Deal Size", usd(m.sales.avgDealSize), "won deals · trailing")}
-        {statCard("Avg Sales Cycle", m.sales.avgCycleDays == null ? "—" : `${Math.round(m.sales.avgCycleDays)} days`, "won_at − created_at · won deals")}
+        {statCard(
+          "Avg Sales Cycle",
+          m.sales.avgCycleDays != null && m.sales.avgCycleDays > 0 ? `${Math.round(m.sales.avgCycleDays)} days` : "—",
+          "illustrative until clean created→won data accrues"
+        )}
       </div>
       <div style={panel}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -297,13 +320,21 @@ export default async function NewBusinessPage({ searchParams }) {
 
       {/* 7) WEEKLY TREND (FULL HISTORY) */}
       <div style={seclabel}>Weekly Trend <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>full history · last 13 weeks</span></div>
-      <div style={panel}>
-        <WeeklyTrend data={m.weekly} targets={m.weeklyTargets} C={C} />
-        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 11, color: C.inkSoft, marginTop: 4 }}>
-          <span><span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: C.navy, marginRight: 5 }} />Won $/wk</span>
-          <span><span style={{ display: "inline-block", width: 10, height: 2, background: C.linkedin, marginRight: 5, verticalAlign: "middle" }} />Meetings/wk (vs target)</span>
-          <span><span style={{ display: "inline-block", width: 10, height: 2, background: C.phone, marginRight: 5, verticalAlign: "middle" }} />New opps/wk (vs target)</span>
-          <span style={{ color: C.muted }}>* current partial week</span>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 14 }}>
+        <div style={panel}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Meetings Booked / wk</div>
+          <WeeklyLine data={m.weekly} valueKey="meetings" target={m.weeklyTargets.meetings} color={C.linkedin} C={C} />
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>line vs weekly target ({m.weeklyTargets.meetings.toFixed(1)}) · * partial week</div>
+        </div>
+        <div style={panel}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>New Opps / wk</div>
+          <WeeklyLine data={m.weekly} valueKey="opps" target={m.weeklyTargets.opps} color={C.phone} C={C} />
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>line vs weekly target ({m.weeklyTargets.opps.toFixed(1)}) · * partial week</div>
+        </div>
+        <div style={panel}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>New Business Won $ / wk</div>
+          <WeeklyColumns data={m.weekly} valueKey="won" color={C.navy} C={C} />
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>weekly won amount · * partial week</div>
         </div>
       </div>
 

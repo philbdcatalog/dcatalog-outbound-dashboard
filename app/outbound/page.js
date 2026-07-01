@@ -278,6 +278,19 @@ export default async function OutboundDashboard({ searchParams }) {
         C={C}
       />
 
+      <div style={seclabel}>Accounts Contacted <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>total vs net-new</span></div>
+      <TripleBars
+        quarterly={d.accountsContactedQuarterly}
+        monthly={d.accountsContacted}
+        weekly={d.accountsContactedWeekly}
+        totalKey="total"
+        subKey="netNew"
+        totalColor={C.navy}
+        subColor={C.green}
+        legend={[{ label: "Accounts contacted", color: C.navy }, { label: "Net-new", color: C.green }]}
+        C={C}
+      />
+
       <div style={seclabel}>By Campaign</div>
       <div style={panel}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
@@ -306,19 +319,6 @@ export default async function OutboundDashboard({ searchParams }) {
           </tbody>
         </table>
       </div>
-
-      <div style={seclabel}>Accounts Contacted <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>total vs net-new</span></div>
-      <TripleBars
-        quarterly={d.accountsContactedQuarterly}
-        monthly={d.accountsContacted}
-        weekly={d.accountsContactedWeekly}
-        totalKey="total"
-        subKey="netNew"
-        totalColor={C.navy}
-        subColor={C.navyDeep}
-        legend={[{ label: "Accounts contacted", color: C.navy }, { label: "Net-new", color: C.navyDeep }]}
-        C={C}
-      />
 
       <div style={seclabel}>Deliverability &amp; Volume</div>
       <div style={panel}>
