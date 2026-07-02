@@ -2,7 +2,7 @@ import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain } from "../../../../lib/ingest";
 import { SESSION_COOKIE, verifySessionToken } from "../../../../lib/auth";
 import { writeDealPreservingOutbound, ensureMeetingForDeal } from "../../../../lib/zohoDeals";
-import { sourceChannelFromDealSource } from "../../../../lib/inbound";
+import { sourceChannelFromDealSource, SOURCE_CHANNELS } from "../../../../lib/inbound";
 
 // POST /api/queue/resolve
 // Resolves a zoho_recon_queue row from the Reconciliation Queue UI with 3-way
@@ -76,11 +76,17 @@ export async function POST(request) {
       return Response.json({ ok: false, stage: "account", error: accErr.message }, { status: 500 });
     }
 
-    // source_channel: derived from the deal/lead source for inbound; 'other' for
-    // the Other bucket; left unset for outbound (not a marketing channel).
+    // source_channel: for inbound, honor the rep's explicit picker value (the
+    // inbound-source dropdown, defaulting to 'unknown'); fall back to deriving
+    // from the deal/lead source when no valid pick is sent (e.g. programmatic
+    // callers). Meetings carry no Lead_Source, so the picker is the real input.
+    // 'other' for the Other bucket; left unset for outbound.
     const rawSrc = row.raw && (row.raw.Deal_Source || row.raw.Lead_Source || row.raw.Source);
+    const explicitChannel = typeof body.source_channel === "string" ? body.source_channel.trim().toLowerCase() : "";
     const sourceChannel =
-      source === "inbound" ? sourceChannelFromDealSource(rawSrc) : source === "other" ? "other" : null;
+      source === "inbound"
+        ? (SOURCE_CHANNELS.includes(explicitChannel) ? explicitChannel : sourceChannelFromDealSource(rawSrc))
+        : source === "other" ? "other" : null;
 
     if (row.kind === "deal") {
       // tool/channel picker (used for outbound; both nullable on deals).
@@ -134,13 +140,16 @@ export async function POST(request) {
         return Response.json({ ok: false, stage: "deal", error: error.message }, { status: 500 });
       }
     } else if (row.kind === "meeting") {
-      // meetings.channel is NOT NULL — pick, else derive from the account's last
-      // meaningful-touch channel; if neither, ask the rep to pick.
+      // meetings.channel is NOT NULL. For outbound, use the picked channel (else
+      // the account's last meaningful-touch channel); if neither, ask the rep to
+      // pick. For inbound/other there is no outbound channel — the real
+      // attribution lives in source_channel — so fall back to a placeholder
+      // ("email") exactly like ensureMeetingForDeal, and NEVER hard-block.
       const VALID_CHANNELS = ["email", "linkedin", "phone", "multi-channel"];
       const VALID_TOOLS = ["instantly", "heyreach", "justcall", "lemlist"];
       const pickedChannel = typeof body.channel === "string" ? body.channel.trim().toLowerCase() : "";
       const pickedTool = typeof body.tool === "string" ? body.tool.trim().toLowerCase() : "";
-      const channel = pickedChannel || account.last_channel || null;
+      const channel = pickedChannel || account.last_channel || (source === "outbound" ? null : "email");
       const tool = pickedTool || null;
       if (!channel) {
         return Response.json({ ok: false, error: "channel required for this meeting", code: "channel_required" }, { status: 400 });

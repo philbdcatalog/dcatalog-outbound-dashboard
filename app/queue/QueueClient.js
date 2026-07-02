@@ -7,8 +7,15 @@ const fmtDate = (s) =>
   s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }) : "—";
 const fmtMoney = (n) => (n == null ? "—" : "$" + Number(n).toLocaleString());
 
-// Meeting graduation picker: each option is a tool+channel pair. The dropdown
-// value is the tool; the channel is derived from this map.
+// Source choice drives which secondary picker shows.
+const SOURCE_OPTIONS = [
+  { value: "outbound", label: "Outbound" },
+  { value: "inbound", label: "Inbound" },
+  { value: "other", label: "Other" },
+];
+
+// OUTBOUND tool picker: each option is a tool+channel pair. The dropdown value
+// is the tool; the channel is derived from this map. Required for outbound.
 const TOOL_OPTIONS = [
   { tool: "instantly", label: "Email (Instantly)" },
   { tool: "heyreach", label: "LinkedIn (HeyReach)" },
@@ -16,6 +23,18 @@ const TOOL_OPTIONS = [
   { tool: "lemlist", label: "Multi-channel (Lemlist)" },
 ];
 const TOOL_TO_CHANNEL = { instantly: "email", heyreach: "linkedin", justcall: "phone", lemlist: "multi-channel" };
+
+// INBOUND source picker: maps to the source_channel enum. Optional; defaults to
+// "unknown" so an inbound record graduates in one click with zero extra picks.
+const INBOUND_SOURCE_OPTIONS = [
+  { value: "website", label: "Website" },
+  { value: "google_ads", label: "Google Ads" },
+  { value: "facebook_ads", label: "Facebook Ads" },
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "trade_show", label: "Trade Show" },
+  { value: "other", label: "Other" },
+  { value: "unknown", label: "Unknown" },
+];
 
 // Which review lane a queue row belongs to. Deals split by deal_stage so the
 // Opps (open) lane is distinct from Won; meetings are their own lane.
@@ -37,16 +56,23 @@ export default function QueueClient({ initialRows, C }) {
   );
   const [busy, setBusy] = useState({});
   const [errors, setErrors] = useState({});
-  // Per-row tool pick (meetings only; value is the tool, channel derived from
-  // TOOL_TO_CHANNEL) + its own validation message.
+  // Per-row source choice (outbound|inbound|other), default outbound. Drives
+  // which secondary picker shows and which action is submitted.
+  const [sources, setSources] = useState({});
+  // Per-row OUTBOUND tool pick (value is the tool, channel derived from
+  // TOOL_TO_CHANNEL) + its own validation message. Required for outbound.
   const [picks, setPicks] = useState({});
   const [chanErrors, setChanErrors] = useState({});
+  // Per-row INBOUND source_channel pick; defaults to "unknown" at submit time.
+  const [inboundChans, setInboundChans] = useState({});
+
+  const sourceOf = (id) => sources[id] || "outbound";
 
   const th = { textAlign: "left", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: C.inkSoft, background: "#f4f6f9", padding: "11px 14px", borderBottom: `1px solid ${C.line}` };
   const td = { padding: "12px 14px", borderBottom: `1px solid ${C.line}`, fontSize: 13, color: C.ink };
   const numTd = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
 
-  async function resolve(row, action) {
+  async function resolve(row) {
     setErrors((e) => ({ ...e, [row.id]: null }));
     setChanErrors((e) => ({ ...e, [row.id]: null }));
     // All three actions (outbound/inbound/other) graduate the record, so a
@@ -55,16 +81,27 @@ export default function QueueClient({ initialRows, C }) {
       setErrors((e) => ({ ...e, [row.id]: "Enter a domain first." }));
       return;
     }
+    const action = sourceOf(row.id);
+    // Build the contextual payload. ONLY outbound requires a selection; inbound
+    // defaults to "unknown" and other needs nothing — neither can hard-block.
+    const payload = { id: row.id, action, domain: domains[row.id] };
+    if (action === "outbound") {
+      const pickedTool = picks[row.id] || "";
+      if (!pickedTool) {
+        setChanErrors((e) => ({ ...e, [row.id]: "Pick a tool" }));
+        return;
+      }
+      payload.tool = pickedTool;
+      payload.channel = TOOL_TO_CHANNEL[pickedTool];
+    } else if (action === "inbound") {
+      payload.source_channel = inboundChans[row.id] || "unknown";
+    }
     setBusy((b) => ({ ...b, [row.id]: true }));
     try {
-      // tool+channel only matter for meeting approvals; the API ignores them for
-      // opps and derives from the account when "(auto)" is left selected.
-      const pickedTool = picks[row.id] || undefined;
-      const pickedChannel = pickedTool ? TOOL_TO_CHANNEL[pickedTool] : undefined;
       const res = await fetch(`/api/queue/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: row.id, action, domain: domains[row.id], tool: pickedTool, channel: pickedChannel }),
+        body: JSON.stringify(payload),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
@@ -148,7 +185,7 @@ export default function QueueClient({ initialRows, C }) {
           <th style={{ ...th, textAlign: "right" }}>Amount</th>
           <th style={{ ...th, textAlign: "right" }}>Date</th>
           <th style={th}>Domain</th>
-          <th style={th}>Channel</th>
+          <th style={th}>Source</th>
           <th style={{ ...th, textAlign: "right" }}>Action</th>
         </tr></thead>
         <tbody>
@@ -182,56 +219,89 @@ export default function QueueClient({ initialRows, C }) {
                   )}
                 </td>
                 <td style={td}>
-                  <select
-                    value={picks[r.id] || ""}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setPicks((c) => ({ ...c, [r.id]: v }));
-                      setChanErrors((x) => ({ ...x, [r.id]: null }));
-                    }}
-                    disabled={disabled}
-                    style={{
+                  {(() => {
+                    const src = sourceOf(r.id);
+                    const selStyle = (err) => ({
                       fontSize: 13, padding: "5px 8px", borderRadius: 6,
-                      border: `1px solid ${chanErrors[r.id] ? "#e05a4d" : C.line}`, outline: "none",
-                    }}
-                  >
-                    <option value="">(auto)</option>
-                    {TOOL_OPTIONS.map((o) => (
-                      <option key={o.tool} value={o.tool}>{o.label}</option>
-                    ))}
-                  </select>
-                  {chanErrors[r.id] && (
-                    <div style={{ color: "#e05a4d", fontSize: 11, marginTop: 3 }}>{chanErrors[r.id]}</div>
-                  )}
+                      border: `1px solid ${err ? "#e05a4d" : C.line}`, outline: "none",
+                    });
+                    return (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <select
+                          value={src}
+                          onChange={(e) => {
+                            setSources((s) => ({ ...s, [r.id]: e.target.value }));
+                            setChanErrors((x) => ({ ...x, [r.id]: null }));
+                          }}
+                          disabled={disabled}
+                          style={selStyle(false)}
+                        >
+                          {SOURCE_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+
+                        {src === "outbound" && (
+                          <select
+                            value={picks[r.id] || ""}
+                            onChange={(e) => {
+                              setPicks((c) => ({ ...c, [r.id]: e.target.value }));
+                              setChanErrors((x) => ({ ...x, [r.id]: null }));
+                            }}
+                            disabled={disabled}
+                            style={selStyle(chanErrors[r.id])}
+                          >
+                            <option value="">Select tool…</option>
+                            {TOOL_OPTIONS.map((o) => (
+                              <option key={o.tool} value={o.tool}>{o.label}</option>
+                            ))}
+                          </select>
+                        )}
+
+                        {src === "inbound" && (
+                          <select
+                            value={inboundChans[r.id] || "unknown"}
+                            onChange={(e) => setInboundChans((c) => ({ ...c, [r.id]: e.target.value }))}
+                            disabled={disabled}
+                            style={selStyle(false)}
+                          >
+                            {INBOUND_SOURCE_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                        )}
+
+                        {src === "other" && (
+                          <span style={{ fontSize: 11, color: C.muted }}>No selection needed</span>
+                        )}
+
+                        {chanErrors[r.id] && (
+                          <div style={{ color: "#e05a4d", fontSize: 11 }}>{chanErrors[r.id]}</div>
+                        )}
+                      </div>
+                    );
+                  })()}
                 </td>
                 <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => resolve(r, "outbound")}
-                    title="source = outbound · is_outbound true"
-                    style={btn(C.navy, "#fff")}
-                  >
-                    {disabled ? "…" : "Outbound"}
-                  </button>{" "}
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => resolve(r, "inbound")}
-                    title="source = inbound · is_outbound false"
-                    style={btn(C.green, "#fff")}
-                  >
-                    Inbound
-                  </button>{" "}
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => resolve(r, "other")}
-                    title="source = other · is_outbound false"
-                    style={btn("#fff", C.inkSoft, `1px solid ${C.line}`)}
-                  >
-                    Other
-                  </button>
+                  {(() => {
+                    const src = sourceOf(r.id);
+                    const style =
+                      src === "inbound" ? btn(C.green, "#fff")
+                      : src === "other" ? btn("#fff", C.inkSoft, `1px solid ${C.line}`)
+                      : btn(C.navy, "#fff");
+                    const label = src === "outbound" ? "Outbound" : src === "inbound" ? "Inbound" : "Other";
+                    return (
+                      <button
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => resolve(r)}
+                        title={`source = ${src} · is_outbound ${src === "outbound"}`}
+                        style={style}
+                      >
+                        {disabled ? "…" : `Graduate · ${label}`}
+                      </button>
+                    );
+                  })()}
                 </td>
               </tr>
             );
