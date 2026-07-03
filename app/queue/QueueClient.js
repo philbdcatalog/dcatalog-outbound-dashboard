@@ -227,6 +227,11 @@ export default function QueueClient({ initialRows, C }) {
                     });
                     return (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {r.lead_source && (
+                          <div style={{ fontSize: 11, color: C.muted }} title="Zoho Lead Source (hint only — not auto-applied)">
+                            Zoho Lead Source: <span style={{ color: C.inkSoft, fontWeight: 600 }}>{r.lead_source}</span>
+                          </div>
+                        )}
                         <select
                           value={src}
                           onChange={(e) => {

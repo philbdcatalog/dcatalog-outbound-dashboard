@@ -15,11 +15,18 @@ async function getPending() {
     const supabase = getServiceClient();
     const { data, error } = await supabase
       .from("zoho_recon_queue")
-      .select("id, kind, deal_stage, stage_detail, company_name, suggested_domain, amount, occurred_at, zoho_id")
+      .select("id, kind, deal_stage, stage_detail, company_name, suggested_domain, amount, occurred_at, zoho_id, raw")
       .eq("status", "pending")
       .order("occurred_at", { ascending: false });
     if (error) return { ok: false, error: error.message };
-    return { ok: true, rows: data || [] };
+    // Surface the Zoho Lead/Deal Source as a lean display hint (from raw) and
+    // drop the bulky raw payload before sending to the client.
+    const zohoStr = (v) => (v == null ? null : typeof v === "object" ? v.name || v.Name || null : String(v));
+    const rows = (data || []).map(({ raw, ...r }) => ({
+      ...r,
+      lead_source: zohoStr(raw && (raw.Lead_Source || raw.Deal_Source || raw.Source)),
+    }));
+    return { ok: true, rows };
   } catch (err) {
     return { ok: false, error: err.message };
   }

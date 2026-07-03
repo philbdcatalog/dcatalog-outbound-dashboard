@@ -272,25 +272,36 @@ export async function GET(request) {
     // populated in Zoho (observed 0/32 "Meeting Booked" leads had it). Outbound
     // attribution is then decided from OUR OWN touch_events, not Zoho's lead
     // source, since Zoho meetings mix inbound + outbound.
+    //
+    // OWNER filter (mirrors the deal sync): ingest ONLY leads owned by a
+    // new-business rep (Owner.id in the roster). Customer Success / other owners
+    // (Matt Moberly, Lina Sotoaguilar, Jenny Simard, …) are skipped so their
+    // meetings never flood the queue or count as new business. Lead_Source is
+    // captured (in raw) so the queue can show it as a hint next to the picker.
     // ----------------------------------------------------------------------
     let leads = [];
     let leadsError = null;
-    try {
-      leads = await zohoSearchAll({
-        accessToken,
-        module: "Leads",
-        criteria: "(Lead_Status:equals:Meeting Booked)",
-        fields:
-          "Full_Name,Company,Website,Email,Lead_Status,Meeting_Booked_Date,Meeting_Performed_Date,Meeting_Status,Modified_Time",
-      });
-      console.log("[zoho-sync] leads fetched:", leads.length);
-    } catch (e) {
-      // Don't silently swallow: log loudly and surface it. meetings_seen will
-      // reflect the real outcome (0 fetched on failure), and the error feeds the
-      // run's error field via rowErrors so we see it instead of a phantom 0.
-      leadsError = e.message;
-      console.error("[zoho-sync] Leads fetch failed:", e);
-      rowErrors.push(`leads fetch: ${e.message}`);
+    let leadsSkippedOwner = 0;
+    if (rosterIds.size === 0) {
+      rowErrors.push("new_business_owner_ids empty/missing — all leads skipped by owner filter");
+    } else {
+      try {
+        leads = await zohoSearchAll({
+          accessToken,
+          module: "Leads",
+          criteria: "(Lead_Status:equals:Meeting Booked)",
+          fields:
+            "Full_Name,Company,Website,Email,Lead_Status,Lead_Source,Owner,Meeting_Booked_Date,Meeting_Performed_Date,Meeting_Status,Modified_Time",
+        });
+        console.log("[zoho-sync] leads fetched:", leads.length);
+      } catch (e) {
+        // Don't silently swallow: log loudly and surface it. meetings_seen will
+        // reflect the real outcome (0 fetched on failure), and the error feeds the
+        // run's error field via rowErrors so we see it instead of a phantom 0.
+        leadsError = e.message;
+        console.error("[zoho-sync] Leads fetch failed:", e);
+        rowErrors.push(`leads fetch: ${e.message}`);
+      }
     }
     counts.meetings_seen = leads.length;
 
@@ -299,6 +310,23 @@ export async function GET(request) {
         const company = zohoName(lead.Company);
         const fullName = zohoName(lead.Full_Name);
         if (TEST_RE.test(company) || TEST_RE.test(fullName)) continue; // skip test data
+
+        // OWNER filter: keep ONLY new-business roster owners (by Zoho owner ID).
+        // Non-roster owners (Customer Success, etc.) are dropped before any DB
+        // work — they never reach the queue or the meetings table.
+        const owner = dealOwner(lead);
+        if (!owner.id || !rosterIds.has(owner.id)) {
+          leadsSkippedOwner++;
+          // Drain any PENDING queue row a prior over-broad sync created for this
+          // non-roster lead (e.g. Customer Success meetings). Only touches
+          // still-pending rows — never undoes one a rep already resolved.
+          await removePendingQueueRow(supabase, "meeting", lead.id);
+          continue;
+        }
+        const ownerName = owner.name || rosterNameById.get(owner.id) || null;
+        // Normalized owner_id/owner_name in raw (queryable, matches the deal sync);
+        // Lead_Source stays in raw for the queue's display hint.
+        const rawWithOwner = { ...lead, owner_id: owner.id, owner_name: ownerName };
 
         // Booking date: prefer Meeting_Booked_Date, but it's frequently blank,
         // so fall back to the lead's Modified_Time as the best "roughly when".
@@ -339,7 +367,7 @@ export async function GET(request) {
             source_tool: "zoho",
             external_id: asExternalId(lead.id),
             channel,
-            raw: lead,
+            raw: rawWithOwner,
           };
 
           const { error } = await supabase
@@ -359,7 +387,7 @@ export async function GET(request) {
             amount: null,
             occurred_at: bookedAt,
             reason: "matched account but no channel derivable (account has no meaningful touch)",
-            raw: lead,
+            raw: rawWithOwner,
           });
           counts.meetings_queued++;
         } else {
@@ -372,7 +400,7 @@ export async function GET(request) {
             amount: null,
             occurred_at: bookedAt,
             reason: domain ? "no account match for domain" : "no website/domain on lead",
-            raw: lead,
+            raw: rawWithOwner,
           });
           counts.meetings_queued++;
         }
@@ -388,6 +416,7 @@ export async function GET(request) {
       deals_stage_updated: dealsStageUpdated,
       deals_skipped_owner: dealsSkippedOwner,
       deals_skipped_legacy: dealsSkippedLegacy,
+      leads_skipped_owner: leadsSkippedOwner,
       roster_size: rosterIds.size,
       leads_error: leadsError,
     };
@@ -456,6 +485,21 @@ async function queueRecon(supabase, row) {
     .from("zoho_recon_queue")
     .upsert({ ...row, status: "pending" }, { onConflict: "kind,zoho_id", ignoreDuplicates: true });
   if (error) throw error;
+}
+
+// Delete a still-PENDING recon-queue row (best-effort). Used to drain rows a
+// prior over-broad sync queued for a lead we now filter out by owner. Never
+// touches approved/resolved rows, and swallows errors so cleanup can't abort
+// the sweep.
+async function removePendingQueueRow(supabase, kind, zohoId) {
+  if (zohoId == null) return;
+  const { error } = await supabase
+    .from("zoho_recon_queue")
+    .delete()
+    .eq("kind", kind)
+    .eq("zoho_id", zohoId)
+    .eq("status", "pending");
+  if (error) console.error("recon cleanup failed:", error.message);
 }
 
 // Finalize the observability run row (best-effort; never fails the request).
