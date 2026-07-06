@@ -485,11 +485,25 @@ async function lastMeaningfulChannel(supabase, accountId) {
 // Upsert a reconciliation-queue row. ignoreDuplicates so a re-sync never
 // clobbers an item already in the queue (e.g. one a human has begun resolving).
 // Idempotent on (kind, zoho_id).
+//
+// Then REFRESH raw onto an existing STILL-PENDING row, so the queue's Zoho
+// Lead_Source hint + Source pre-fill stay current when the CRM source is filled
+// in after the row was first queued. Only touches pending rows (never a resolved
+// one), and only raw — occurred_at / suggested_domain / reason are left as-is.
 async function queueRecon(supabase, row) {
   const { error } = await supabase
     .from("zoho_recon_queue")
     .upsert({ ...row, status: "pending" }, { onConflict: "kind,zoho_id", ignoreDuplicates: true });
   if (error) throw error;
+  if (row.raw !== undefined) {
+    const { error: refErr } = await supabase
+      .from("zoho_recon_queue")
+      .update({ raw: row.raw })
+      .eq("kind", row.kind)
+      .eq("zoho_id", row.zoho_id)
+      .eq("status", "pending");
+    if (refErr) throw refErr;
+  }
 }
 
 // Delete a still-PENDING recon-queue row (best-effort). Used to drain rows a

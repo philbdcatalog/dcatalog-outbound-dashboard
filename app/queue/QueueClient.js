@@ -35,6 +35,38 @@ const INBOUND_SOURCE_OPTIONS = [
   { value: "other", label: "Other" },
   { value: "unknown", label: "Unknown" },
 ];
+const INBOUND_LABEL = Object.fromEntries(INBOUND_SOURCE_OPTIONS.map((o) => [o.value, o.label]));
+
+// Pre-fill the Source picker from the Zoho Lead_Source so a rep confirms rather
+// than blind-picks (and stored source stops silently diverging from the CRM).
+// Keys are lowercased Lead_Source strings; value is the suggested pick. This is
+// pre-fill + confirm, NOT a lock — the rep can still override. Anything not
+// listed (Calendly, Manual, blank, unrecognized) returns null = no pre-fill.
+const LEAD_SOURCE_PREFILL = {
+  "request a demo": { source: "inbound", channel: "website" },
+  "try for free": { source: "inbound", channel: "website" },
+  "website": { source: "inbound", channel: "website" },
+  "contact us": { source: "inbound", channel: "website" },
+  "google adwords": { source: "inbound", channel: "google_ads" },
+  "google catalog": { source: "inbound", channel: "google_ads" },
+  "facebook": { source: "inbound", channel: "facebook_ads" },
+  "facebook ads": { source: "inbound", channel: "facebook_ads" },
+  "linkedin": { source: "inbound", channel: "linkedin" },
+  "trade show": { source: "inbound", channel: "trade_show" },
+  "event": { source: "inbound", channel: "trade_show" },
+  "seamless.ai": { source: "outbound" }, // prospecting tool -> leave tool for the rep
+  "zoominfo": { source: "outbound" },
+  "apollo": { source: "outbound" },
+};
+function prefillFromLeadSource(ls) {
+  if (!ls) return null;
+  return LEAD_SOURCE_PREFILL[String(ls).trim().toLowerCase()] || null;
+}
+// Human-readable target for the soft "differs from Zoho" warning.
+function prefillLabel(p) {
+  if (!p) return null;
+  return p.source === "inbound" ? `Inbound · ${INBOUND_LABEL[p.channel] || p.channel}` : "Outbound";
+}
 
 // Which review lane a queue row belongs to. Deals split by deal_stage so the
 // Opps (open) lane is distinct from Won; meetings are their own lane.
@@ -57,14 +89,31 @@ export default function QueueClient({ initialRows, C }) {
   const [busy, setBusy] = useState({});
   const [errors, setErrors] = useState({});
   // Per-row source choice (outbound|inbound|other), default outbound. Drives
-  // which secondary picker shows and which action is submitted.
-  const [sources, setSources] = useState({});
+  // which secondary picker shows and which action is submitted. Pre-filled from
+  // the Zoho Lead_Source when it maps cleanly (rep can still override).
+  const [sources, setSources] = useState(() =>
+    Object.fromEntries(
+      (initialRows || [])
+        .map((r) => [r.id, prefillFromLeadSource(r.lead_source)?.source])
+        .filter(([, v]) => v)
+    )
+  );
   // Per-row OUTBOUND tool pick (value is the tool, channel derived from
   // TOOL_TO_CHANNEL) + its own validation message. Required for outbound.
   const [picks, setPicks] = useState({});
   const [chanErrors, setChanErrors] = useState({});
   // Per-row INBOUND source_channel pick; defaults to "unknown" at submit time.
-  const [inboundChans, setInboundChans] = useState({});
+  // Pre-filled from a clean inbound Lead_Source mapping.
+  const [inboundChans, setInboundChans] = useState(() =>
+    Object.fromEntries(
+      (initialRows || [])
+        .map((r) => {
+          const p = prefillFromLeadSource(r.lead_source);
+          return [r.id, p && p.source === "inbound" ? p.channel : undefined];
+        })
+        .filter(([, v]) => v)
+    )
+  );
 
   const sourceOf = (id) => sources[id] || "outbound";
 
@@ -225,6 +274,13 @@ export default function QueueClient({ initialRows, C }) {
                       fontSize: 13, padding: "5px 8px", borderRadius: 6,
                       border: `1px solid ${err ? "#e05a4d" : C.line}`, outline: "none",
                     });
+                    // Soft warning (not a block): the rep's current pick differs
+                    // from the clean Zoho Lead_Source mapping.
+                    const mapping = prefillFromLeadSource(r.lead_source);
+                    const conflict =
+                      mapping &&
+                      (src !== mapping.source ||
+                        (mapping.source === "inbound" && (inboundChans[r.id] || "unknown") !== mapping.channel));
                     return (
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         {r.lead_source && (
@@ -282,6 +338,12 @@ export default function QueueClient({ initialRows, C }) {
 
                         {chanErrors[r.id] && (
                           <div style={{ color: "#e05a4d", fontSize: 11 }}>{chanErrors[r.id]}</div>
+                        )}
+
+                        {conflict && (
+                          <div style={{ fontSize: 11, color: "#b8791f" }} title="Soft check — you can still graduate as picked.">
+                            ⚠ Differs from Zoho Lead Source (maps to {prefillLabel(mapping)})
+                          </div>
                         )}
                       </div>
                     );
