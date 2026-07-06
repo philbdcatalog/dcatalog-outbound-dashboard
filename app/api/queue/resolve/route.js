@@ -121,15 +121,23 @@ export async function POST(request) {
         raw: row.raw,
       };
       if (sourceChannel) fields.source_channel = sourceChannel;
+      const meetingBookedAt = row.raw?.meeting_at || row.raw?.Created_Time || row.occurred_at || null;
       try {
-        await writeDealPreservingOutbound(supabase, fields, () => isOutbound);
+        // Set-once milestones from the queued Zoho record; closing date only when
+        // the deal is closed (occurred_at holds Closing_Date for won/lost lanes).
+        await writeDealPreservingOutbound(supabase, fields, () => isOutbound, {
+          createdTime: row.raw?.Created_Time || null,
+          closingDate: stage === "open" ? null : row.occurred_at || null,
+          stage,
+          meetingBookedAt,
+        });
         // Every graduated deal implies a meeting happened — ensure one exists
         // (deduped by domain+quarter), so the feeds/charts populate too.
         await ensureMeetingForDeal(supabase, {
           zohoDealId: row.zoho_id,
           domain,
           accountId: account.id,
-          bookedAt: row.raw?.meeting_at || row.raw?.Created_Time || row.occurred_at,
+          bookedAt: meetingBookedAt,
           source,
           sourceChannel: sourceChannel || null,
           isOutbound,

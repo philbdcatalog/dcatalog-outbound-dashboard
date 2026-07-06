@@ -1,6 +1,6 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
-import { accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner, ensureMeetingForDeal } from "../../../../lib/zohoDeals";
+import { accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner, ensureMeetingForDeal, buildDealWritePatch, DEAL_WRITE_SELECT } from "../../../../lib/zohoDeals";
 
 // GET /api/sync/zoho-wins
 // LIGHTWEIGHT, HIGH-CADENCE companion to /api/sync/zoho. Pulls ONLY current-
@@ -107,19 +107,22 @@ export async function GET(request) {
         const rawWithOwner = { ...deal, owner_id: owner.id, owner_name: owner.name || rosterNameById.get(owner.id) || null };
 
         // Already in `deals`? It cleared recon — just keep its fields fresh and
-        // NEVER touch is_outbound / re-queue (stage stays 'won' here).
+        // NEVER touch is_outbound / re-queue (stage stays 'won' here). amount is
+        // dropped when amount_locked (BUG 2); set-once won_at/etc. filled when
+        // still null (BUG 1) — both via buildDealWritePatch.
         const { data: existing, error: exErr } = await supabase
-          .from("deals").select("zoho_deal_id").eq("zoho_deal_id", deal.id).maybeSingle();
+          .from("deals").select(DEAL_WRITE_SELECT).eq("zoho_deal_id", deal.id).maybeSingle();
         if (exErr) throw exErr;
         if (existing) {
-          const { error } = await supabase.from("deals").update({
+          const patch = await buildDealWritePatch(supabase, existing, {
             stage: "won",
             stage_detail: zohoName(deal.Stage) || null,
             company_name: companyName || dealName || null,
             amount: deal.Amount ?? null,
             closed_at: deal.Closing_Date ?? null,
             raw: rawWithOwner,
-          }).eq("zoho_deal_id", deal.id);
+          }, { createdTime: deal.Created_Time, closingDate: deal.Closing_Date, stage: "won", meetingBookedAt: null });
+          const { error } = await supabase.from("deals").update(patch).eq("zoho_deal_id", deal.id);
           if (error) throw error;
           counts.deals_matched++;
           continue;
@@ -146,7 +149,8 @@ export async function GET(request) {
               closed_at: deal.Closing_Date ?? null,
               raw: rawWithOwner,
             },
-            () => true
+            () => true,
+            { createdTime: deal.Created_Time, closingDate: deal.Closing_Date, stage: "won", meetingBookedAt: null }
           );
           await ensureMeetingForDeal(supabase, {
             zohoDealId: deal.id,

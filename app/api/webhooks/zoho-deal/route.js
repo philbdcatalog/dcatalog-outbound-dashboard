@@ -1,6 +1,6 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain } from "../../../../lib/ingest";
-import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner, ensureMeetingForDeal } from "../../../../lib/zohoDeals";
+import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner, ensureMeetingForDeal, buildDealWritePatch, DEAL_WRITE_SELECT } from "../../../../lib/zohoDeals";
 import { sourceChannelFromDealSource } from "../../../../lib/inbound";
 
 // POST /api/webhooks/zoho-deal
@@ -114,13 +114,15 @@ export async function POST(request) {
     const rawWithOwner = { ...deal, owner_id: owner.id, owner_name: ownerName };
 
     // IDEMPOTENT: if the deal already exists, update in place — never touch
-    // is_outbound / created_at / source / tool / channel (a rep's decision), and
-    // never re-queue.
+    // is_outbound / source / tool / channel (a rep's decision), and never
+    // re-queue. amount is dropped when amount_locked (BUG 2); set-once
+    // milestones (incl. created_at) are only FILLED when null (BUG 1), so an
+    // existing created_at/won_at is never moved — both via buildDealWritePatch.
     const { data: existing, error: exErr } = await supabase
-      .from("deals").select("zoho_deal_id").eq("zoho_deal_id", dealId).maybeSingle();
+      .from("deals").select(DEAL_WRITE_SELECT).eq("zoho_deal_id", dealId).maybeSingle();
     if (exErr) throw exErr;
     if (existing) {
-      const { error } = await supabase.from("deals").update({
+      const patch = await buildDealWritePatch(supabase, existing, {
         stage,
         stage_detail: stageDetail,
         company_name: companyName || dealName || null,
@@ -128,7 +130,8 @@ export async function POST(request) {
         closed_at: closedAt,
         source_channel: sourceChannel,
         raw: rawWithOwner,
-      }).eq("zoho_deal_id", dealId);
+      }, { createdTime: deal.Created_Time, closingDate: deal.Closing_Date, stage, meetingBookedAt: null });
+      const { error } = await supabase.from("deals").update(patch).eq("zoho_deal_id", dealId);
       if (error) throw error;
       return Response.json({ ok: true, action: "updated", stage });
     }
@@ -157,7 +160,9 @@ export async function POST(request) {
       // Set created_at from the Zoho creation time (immutable) so the funnel
       // scopes this opp to the right quarter. Omit when absent (DB default).
       if (deal.Created_Time) fields.created_at = deal.Created_Time;
-      await writeDealPreservingOutbound(supabase, fields, () => true);
+      await writeDealPreservingOutbound(supabase, fields, () => true, {
+        createdTime: deal.Created_Time, closingDate: deal.Closing_Date, stage, meetingBookedAt: null,
+      });
       // Ensure a meeting row for this deal's account (deduped by domain+quarter).
       await ensureMeetingForDeal(supabase, {
         zohoDealId: dealId,
