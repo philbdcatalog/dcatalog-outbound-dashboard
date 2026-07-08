@@ -149,7 +149,14 @@ export async function GET(request) {
         // new-business rep. Matched by Zoho owner ID (stable). Wrong-owner deals
         // (Client Success, PMs, SDRs, …) are dropped before any stage/DB work.
         const owner = dealOwner(deal);
-        if (!owner.id || !rosterIds.has(owner.id)) { dealsSkippedOwner++; continue; }
+        if (!owner.id || !rosterIds.has(owner.id)) {
+          dealsSkippedOwner++;
+          // Drain any PENDING queue row a prior sync created for this deal before
+          // it was reassigned off a roster AE (mirrors the meeting-sync drain).
+          // Only pending rows; never deletes from the deals table.
+          await removePendingQueueRow(supabase, "deal", deal.id);
+          continue;
+        }
         const ownerName = owner.name || rosterNameById.get(owner.id) || null;
 
         const stage = classifyStage(deal.Stage);

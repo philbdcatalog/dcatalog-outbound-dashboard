@@ -25,6 +25,85 @@ function zohoName(v) {
   return String(v);
 }
 
+// Coerce a maybe-numeric-string (form values arrive as strings) to a number, or
+// null when blank/non-numeric. JSON payloads already carry a real number.
+function numOrNull(v) {
+  if (v == null || v === "") return null;
+  const n = Number(String(v).replace(/[^0-9.\-]/g, ""));
+  return Number.isFinite(n) ? n : null;
+}
+
+// Unwrap the deal record from a parsed JSON payload — Zoho may deliver it top-
+// level or nested under a common wrapper key.
+function unwrapDeal(p) {
+  const obj = p || {};
+  return obj.deal || obj.record || (Array.isArray(obj.data) ? obj.data[0] : obj.data) || obj;
+}
+
+// Content-type-tolerant body parse. Zoho fires this webhook as JSON OR as
+// application/x-www-form-urlencoded (mapped key=value params), and sometimes
+// nests the whole JSON inside a single form field. Returns a deal object shaped
+// like the JSON path (so the downstream classify/queue/write code is unchanged),
+// or null only when the body can't be parsed either way.
+function parseDealPayload(raw) {
+  if (!raw || !raw.trim()) return null;
+
+  // 1) JSON (application/json).
+  try {
+    return unwrapDeal(JSON.parse(raw));
+  } catch {
+    // fall through to form parsing
+  }
+
+  // 2) form-urlencoded.
+  let params;
+  try {
+    params = new URLSearchParams(raw);
+  } catch {
+    return null;
+  }
+  if ([...params.keys()].length === 0) return null;
+
+  // 2a) Zoho sometimes nests the entire JSON inside one field.
+  for (const k of ["body", "data", "payload", "json"]) {
+    const v = params.get(k);
+    if (v) {
+      try {
+        return unwrapDeal(JSON.parse(v));
+      } catch {
+        // not JSON in this field — keep trying / fall through to flat parse
+      }
+    }
+  }
+
+  // 2b) flat mapped key=value form (the shape Zoho's webhook "params" produce).
+  const get = (...keys) => {
+    for (const k of keys) {
+      const val = params.get(k);
+      if (val != null && val !== "") return val;
+    }
+    return null;
+  };
+  const ownerName = get("Owner", "Owner_Name", "owner");
+  const ownerId = get("Owner_id", "Owner_Id", "owner_id");
+  const deal = {
+    id: get("id", "Id", "deal_id", "Deal_Id"),
+    Deal_Name: get("Deal_Name", "Deal_name"),
+    Account_Name: get("Account_Name"),
+    Stage: get("Stage"),
+    Amount: numOrNull(get("Amount")),
+    Created_Time: get("Created_Time"),
+    Closing_Date: get("Closing_Date"),
+    Lead_Source: get("Lead_Source"),
+    Source: get("Source"),
+    Website: get("Website"),
+  };
+  // Rebuild Owner in the { id, name } shape dealOwner() understands (Zoho sends
+  // the name in Owner and the id separately in Owner_id on form fires).
+  if (ownerId || ownerName) deal.Owner = { id: ownerId || null, name: ownerName || null };
+  return deal;
+}
+
 async function findAccount(supabase, domain) {
   const { data, error } = await supabase.from("accounts").select("id, last_channel").eq("domain", domain).maybeSingle();
   if (error) throw error;
@@ -58,18 +137,15 @@ export async function POST(request) {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
-  // 2) Parse.
-  let payload;
-  try {
-    payload = JSON.parse(rawBody);
-  } catch {
-    console.warn("[zoho-deal-webhook] DROP: invalid json ::", rawBody);
-    return Response.json({ ok: false, error: "invalid json" }, { status: 400 });
+  // 2) Parse — content-type tolerant (JSON or form-urlencoded, incl. JSON nested
+  //    in a form field). Only DROP when BOTH parse strategies fail. This same
+  //    tolerance covers create-rule and edit-rule fires on this endpoint.
+  const deal = parseDealPayload(rawBody);
+  if (!deal) {
+    console.warn("[zoho-deal-webhook] DROP: unparseable body (neither JSON nor form) ::", rawBody);
+    return Response.json({ ok: false, error: "unparseable body" }, { status: 400 });
   }
 
-  // The deal record may be top-level or nested — probe common wrappers.
-  const p = payload || {};
-  const deal = p.deal || p.record || (Array.isArray(p.data) ? p.data[0] : p.data) || p;
   const dealId = deal && (deal.id || deal.Id || deal.deal_id || deal.Deal_Id);
   if (!dealId) {
     console.warn("[zoho-deal-webhook] skip: no deal id in payload");
