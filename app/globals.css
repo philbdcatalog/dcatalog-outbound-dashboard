@@ -39,3 +39,13 @@
 .btnish:hover {
   opacity: 0.92;
 }
+
+/* Small inline spinner (Refresh data button). */
+.nb-spin {
+  animation: nb-spin 0.7s linear infinite;
+}
+@keyframes nb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

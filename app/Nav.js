@@ -1,4 +1,5 @@
 import { C } from "../lib/theme";
+import RefreshButton from "./RefreshButton";
 
 // Shared top nav. `active` matches a tab key; `reconPending` shows the queue badge.
 // Order: New Business (default, root), Outbound, Recon Queue, Inbound, TAM, Goals.
@@ -22,7 +23,8 @@ export default function Nav({ active, reconPending = 0 }) {
           )}
         </a>
       ))}
-      <a href="/api/logout" className="navlink navlink--muted" style={{ marginLeft: "auto" }}>Log out</a>
+      <RefreshButton />
+      <a href="/api/logout" className="navlink navlink--muted" style={{ marginLeft: 6 }}>Log out</a>
     </nav>
   );
 }
