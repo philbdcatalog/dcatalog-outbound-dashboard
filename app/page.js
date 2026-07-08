@@ -284,14 +284,14 @@ export default async function NewBusinessPage({ searchParams }) {
         </table>
       </div>
 
-      {/* 6) SALES STAGE ANALYSIS */}
-      <div style={seclabel}>Sales Stage Analysis</div>
+      {/* 6) SALES STAGE ANALYSIS (pipeline snapshot — not period-filtered) */}
+      <div style={seclabel}>Sales Stage Analysis <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>pipeline snapshot · not period-filtered</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 14, marginBottom: 14 }}>
-        {statCard("Avg Deal Size", usd(m.sales.avgDealSize), "won deals · trailing")}
+        {statCard("Avg Deal Size", usd(m.sales.avgDealSize), "avg won deal size · all-time")}
         {statCard(
           "Avg Sales Cycle",
-          m.sales.avgCycleDays != null && m.sales.avgCycleDays > 0 ? `${Math.round(m.sales.avgCycleDays)} days` : "—",
-          "illustrative until clean created→won data accrues"
+          m.sales.avgCycleDays != null ? `${m.sales.avgCycleDays.toFixed(1)} days` : "—",
+          "avg days created→won · valid-dated deals"
         )}
       </div>
       <div style={panel}>
@@ -304,18 +304,52 @@ export default async function NewBusinessPage({ searchParams }) {
             <th style={{ ...th, textAlign: "right" }}>Avg Days in Stage</th>
           </tr></thead>
           <tbody>
-            {m.sales.stageTable.map((row) => (
-              <tr key={row.stage}>
-                <td style={{ ...td, textTransform: "capitalize" }}>{row.stage}</td>
-                <td style={numTd}>{row.prob == null ? "—" : `${Math.round(row.prob * 100)}%`}</td>
-                <td style={{ ...numTd, fontWeight: 700 }}>{fmt(row.reached)}</td>
-                <td style={{ ...numTd, color: C.muted }}>—</td>
-                <td style={{ ...numTd, color: C.muted }}>—</td>
-              </tr>
-            ))}
+            {m.sales.stageTable.map((row, i) => {
+              const next = m.sales.stageTable[i + 1];
+              const conv = next && row.reached > 0 ? next.reached / row.reached : null;
+              return (
+                <tr key={row.stage}>
+                  <td style={{ ...td, textTransform: "capitalize" }}>{row.stage}</td>
+                  <td style={numTd}>{row.prob == null ? "—" : `${Math.round(row.prob * 100)}%`}</td>
+                  <td style={{ ...numTd, fontWeight: 700 }}>{fmt(row.reached)}</td>
+                  <td style={{ ...numTd, color: C.inkSoft }}>{conv == null ? "—" : `${(conv * 100).toFixed(1)}%`}</td>
+                  <td style={{ ...numTd, color: C.muted }}>—</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
-        <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>Conv to Next and Avg Days in Stage are illustrative until stage-transition timestamps are captured.</div>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>Avg Days in Stage is illustrative until per-stage transition timestamps are tracked.</div>
+      </div>
+
+      {/* Open deals list — all live open deals, for live CEO review */}
+      <div style={{ ...seclabel, marginTop: 14 }}>Open Deals <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>all live open pipeline · {m.sales.openDeals.length} deals</span></div>
+      <div style={panel}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr>
+            <th style={th}>Company</th>
+            <th style={th}>Stage</th>
+            <th style={{ ...th, textAlign: "right" }}>Amount</th>
+          </tr></thead>
+          <tbody>
+            {m.sales.openDeals.length === 0 ? (
+              <tr><td style={{ ...td, color: C.muted }} colSpan={3}>No open deals.</td></tr>
+            ) : (
+              m.sales.openDeals.map((d, i) => (
+                <tr key={i}>
+                  <td style={{ ...td, fontWeight: 500 }}>{d.company}</td>
+                  <td style={{ ...td, color: C.inkSoft }}>{d.stage}</td>
+                  <td style={numTd}>{usd(d.amount)}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+          <tfoot><tr>
+            <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>Total open pipeline</td>
+            <td style={{ ...td, borderTop: `2px solid ${C.line}` }}></td>
+            <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{usd(m.sales.openTotal)}</td>
+          </tr></tfoot>
+        </table>
       </div>
 
       {/* 7) WEEKLY TREND (FULL HISTORY) */}
