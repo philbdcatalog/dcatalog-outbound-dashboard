@@ -43,8 +43,11 @@ const INBOUND_LABEL = Object.fromEntries(INBOUND_SOURCE_OPTIONS.map((o) => [o.va
 // pre-fill + confirm, NOT a lock — the rep can still override. Anything not
 // listed (Calendly, Manual, blank, unrecognized) returns null = no pre-fill.
 const LEAD_SOURCE_PREFILL = {
-  "request a demo": { source: "inbound", channel: "website" },
-  "try for free": { source: "inbound", channel: "website" },
+  // Google Ads landing-page CTAs — form-fills here are paid, not organic.
+  "request a demo": { source: "inbound", channel: "google_ads" },
+  "try for free": { source: "inbound", channel: "google_ads" },
+  "request for catalog automation": { source: "inbound", channel: "google_ads" },
+  // Organic website.
   "website": { source: "inbound", channel: "website" },
   "contact us": { source: "inbound", channel: "website" },
   "google adwords": { source: "inbound", channel: "google_ads" },
