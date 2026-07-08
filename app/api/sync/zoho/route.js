@@ -2,6 +2,7 @@ import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain, domainFromEmail } from "../../../../lib/ingest";
 import { getZohoAccessToken, zohoSearchAll, zohoListAll, resolveDealDomain } from "../../../../lib/zoho";
 import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner, ensureMeetingForDeal, buildDealWritePatch, DEAL_WRITE_SELECT } from "../../../../lib/zohoDeals";
+import { writeHeartbeat } from "../../../../lib/health";
 
 // GET /api/sync/zoho
 // Scheduled PULL job (Vercel Cron, hourly). Pulls Closed Won deals and booked
@@ -445,6 +446,14 @@ export async function GET(request) {
       finished_at: new Date().toISOString(),
       error: rowErrors.length ? rowErrors.slice(0, 20).join("; ") : null,
     });
+    // Heartbeat for the health check: freshness signal + short status note.
+    await writeHeartbeat(
+      supabase,
+      !fatalError,
+      fatalError
+        ? `zoho: ${fatalError}`
+        : `zoho: deals ${counts.deals_matched}m/${counts.deals_queued}q of ${counts.deals_seen}; meetings ${counts.meetings_matched}m/${counts.meetings_queued}q of ${counts.meetings_seen}`
+    );
   }
 
   return Response.json(

@@ -1,6 +1,7 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { getZohoAccessToken, zohoSearchAll, resolveDealDomain } from "../../../../lib/zoho";
 import { accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner, ensureMeetingForDeal, buildDealWritePatch, DEAL_WRITE_SELECT } from "../../../../lib/zohoDeals";
+import { writeHeartbeat } from "../../../../lib/health";
 
 // GET /api/sync/zoho-wins
 // LIGHTWEIGHT, HIGH-CADENCE companion to /api/sync/zoho. Pulls ONLY current-
@@ -196,10 +197,12 @@ export async function GET(request) {
       finished_at: new Date().toISOString(),
       error: rowErrors.length ? rowErrors.slice(0, 20).join("; ") : null,
     });
+    await writeHeartbeat(supabase, true, `zoho-wins: deals ${counts.deals_matched}m/${counts.deals_queued}q of ${counts.deals_seen}`);
 
     return Response.json({ ok: true, scope: "wins-current-quarter", ...counts, row_errors: rowErrors.length, debug: { deals_skipped_owner: dealsSkippedOwner } });
   } catch (err) {
     await finishRun(supabase, runId, { ...counts, finished_at: new Date().toISOString(), error: err.message });
+    await writeHeartbeat(supabase, false, `zoho-wins: ${err.message}`);
     return Response.json({ ok: false, error: err.message, ...counts }, { status: 500 });
   }
 }

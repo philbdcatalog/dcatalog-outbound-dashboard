@@ -10,6 +10,7 @@ export default function Nav({ active, reconPending = 0 }) {
     { key: "inbound", href: "/inbound", label: "Inbound" },
     { key: "tam", href: "/tam", label: "TAM" },
     { key: "goals", href: "/goals", label: "Goals" },
+    { key: "health", href: "/health", label: "Health" },
   ];
   return (
     <nav style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 16, paddingBottom: 12, borderBottom: `1px solid ${C.line}` }}>
