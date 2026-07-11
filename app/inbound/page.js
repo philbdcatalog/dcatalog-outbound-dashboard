@@ -114,21 +114,20 @@ export default async function InboundPage({ searchParams }) {
 
   const ok = m?.ok;
   const g = ok ? m.gauges : { pipeline: 0, won: 0, meetings: 0 };
-  const f = ok ? m.funnel : { leads: 0, mql: null, sql: null, meetings: 0, opps: 0, won: 0 };
+  const f = ok ? m.funnel : { meetings: 0, opps: 0, won: 0 };
+  const lb = (ok && m.leadsBlock) || { count: 0, junk: 0, junkPct: 0, mql: 0, sql: 0, bySource: [], avgNewToMql: null, avgMqlToSql: null };
   const goals = (ok && m.goals) || INBOUND_GOALS;
 
-  // Funnel rows. MQL/SQL are pending the Zoho lifecycle field (greyed, n/a).
+  // Block B — DEAL funnel only (Meetings → Opps → Won). Leads/MQL/SQL live in
+  // Block A (a different entity), so they are NOT chained here. Percentages are
+  // internal to this block: "% of Meetings" (its own top) + "% from previous".
   const funnelRows = [
-    { name: "Leads", val: f.leads, real: true },
-    { name: "MQL", val: null, real: false, note: "needs field" },
-    { name: "SQL", val: null, real: false, note: "needs field" },
-    { name: "Meetings", val: f.meetings, real: true },
-    { name: "Opportunities", val: f.opps, real: true },
-    { name: "Won", val: f.won, real: true },
+    { name: "Meetings", val: f.meetings },
+    { name: "Opportunities", val: f.opps },
+    { name: "Won", val: f.won },
   ];
-  const funnelTop = f.leads || 1;
-  // Previous REAL stage value for "% from previous" (skips the n/a MQL/SQL rows).
-  let prevReal = null;
+  const funnelTop = f.meetings || 1;
+  let prevVal = null;
 
   // ---- Placeholder / sample datasets (clearly labeled) --------------------
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
@@ -178,31 +177,69 @@ export default async function InboundPage({ searchParams }) {
         <Gauge label="Closed Won" value={g.won} goal={goals.won} display={usdK(g.won)} sub={`${usd(g.won)} won · ${periodShort}`} />
       </div>
 
-      {/* 2) FUNNEL */}
-      <div style={seclabel}>Inbound Funnel</div>
+      {/* 2A) INBOUND LEADS (Block A — reads `leads`, top-of-funnel) */}
+      <div style={seclabel}>Inbound Leads <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>real leads · {periodShort}</span></div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+        {[
+          { label: "Leads", value: fmt(lb.count), sub: "raw records in" },
+          { label: "% Junk", value: `${(lb.junkPct * 100).toFixed(0)}%`, sub: `${fmt(lb.junk)} of ${fmt(lb.count)} junk` },
+          { label: "MQL", value: fmt(lb.mql), sub: "reached MQL" },
+          { label: "SQL", value: fmt(lb.sql), sub: "reached SQL" },
+        ].map((s) => (
+          <div key={s.label} style={card}>
+            <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.2, color: C.muted }}>{s.label}</div>
+            <div style={{ fontSize: 30, fontWeight: 700, color: C.navy, marginTop: 8 }}>{s.value}</div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>{s.sub}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
+        Lifecycle tracking started Jul 2026 — forward-only, so MQL / SQL read 0 until leads are qualified going forward.
+        {lb.avgNewToMql != null && <> · Avg New→MQL {lb.avgNewToMql.toFixed(1)}d</>}
+        {lb.avgMqlToSql != null && <> · Avg MQL→SQL {lb.avgMqlToSql.toFixed(1)}d</>}
+      </div>
+      {lb.bySource.length > 0 && (
+        <div style={{ ...panel, marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 10 }}>Leads by source · {periodShort}</div>
+          {lb.bySource.map((s) => (
+            <div key={s.channel} style={{ marginBottom: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: C.inkSoft, marginBottom: 3 }}>
+                <span>{CHANNEL_LABEL[s.channel] || s.channel}</span>
+                <span style={{ fontWeight: 700, color: C.ink }}>{fmt(s.count)} · {pct(s.count, lb.count)}</span>
+              </div>
+              <div style={{ height: 10, background: C.line, borderRadius: 4, overflow: "hidden" }}>
+                <div style={{ width: `${Math.max(2, (s.count / (lb.count || 1)) * 100)}%`, height: "100%", background: CHANNEL_COLOR[s.channel] || C.muted, borderRadius: 4 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 2B) DEAL FUNNEL (Block B — reads `deals`, independent of leads) */}
+      <div style={seclabel}>Deal Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>inbound-sourced deals · {periodShort}</span></div>
       <div style={panel}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr>
             <th style={th}>Stage</th>
             <th style={{ ...th, textAlign: "right" }}>Count</th>
-            <th style={{ ...th, textAlign: "right" }}>% of Leads</th>
+            <th style={{ ...th, textAlign: "right" }}>% of Meetings</th>
             <th style={{ ...th, textAlign: "right" }}>% from Previous</th>
             <th style={th}>Funnel</th>
           </tr></thead>
           <tbody>
             {funnelRows.map((row) => {
-              const fromPrev = row.real && prevReal != null ? pct(row.val, prevReal) : "–";
-              if (row.real) prevReal = row.val;
-              const barW = row.real ? Math.max(2, Math.min(100, (row.val / funnelTop) * 100)) : 0;
+              const fromPrev = prevVal != null ? pct(row.val, prevVal) : "–";
+              prevVal = row.val;
+              const barW = Math.max(2, Math.min(100, (row.val / funnelTop) * 100));
               return (
                 <tr key={row.name}>
-                  <td style={{ ...td, fontWeight: 500, color: row.real ? C.ink : C.muted }}>{row.name}{!row.real && <span style={{ fontSize: 11, color: C.muted }}> · {row.note}</span>}</td>
-                  <td style={row.real ? { ...numTd, fontSize: 16, fontWeight: 700 } : naTd}>{row.real ? fmt(row.val) : "n/a"}</td>
-                  <td style={row.real ? numTd : naTd}>{row.real ? pct(row.val, funnelTop) : "n/a"}</td>
-                  <td style={row.real ? { ...numTd, color: C.muted } : naTd}>{row.real ? fromPrev : "n/a"}</td>
+                  <td style={{ ...td, fontWeight: 500 }}>{row.name}</td>
+                  <td style={{ ...numTd, fontSize: 16, fontWeight: 700 }}>{fmt(row.val)}</td>
+                  <td style={numTd}>{pct(row.val, funnelTop)}</td>
+                  <td style={{ ...numTd, color: C.muted }}>{fromPrev}</td>
                   <td style={{ ...td, width: "30%" }}>
                     <div style={{ height: 14, background: C.line, borderRadius: 4, overflow: "hidden" }}>
-                      <div style={{ width: `${barW}%`, height: "100%", background: row.real ? C.navy : "transparent", borderRadius: 4 }} />
+                      <div style={{ width: `${barW}%`, height: "100%", background: C.navy, borderRadius: 4 }} />
                     </div>
                   </td>
                 </tr>
@@ -210,14 +247,7 @@ export default async function InboundPage({ searchParams }) {
             })}
           </tbody>
         </table>
-      </div>
-
-      {/* 3) CALLOUT */}
-      <div style={{ ...panel, marginTop: 14, borderLeft: `3px solid #e8b04b`, background: "#fffdf6" }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: "#9a6a1c", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 6 }}>Foundation gap to raise with Mirit</div>
-        <div style={{ fontSize: 13.5, color: C.inkSoft, lineHeight: 1.6 }}>
-          MQL and SQL stages can&apos;t be measured yet — Zoho has no lifecycle-stage field wired, so leads can&apos;t be marked Marketing-Qualified or Sales-Qualified. The funnel currently jumps Leads → Meetings. To light up the middle of the funnel (and channel conversion quality), we need a lifecycle field on the Lead/Contact (or Deal) populated from form fills + sales acceptance. That&apos;s the v2 ask.
-        </div>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>Leads and deals are separate entities — a lead may not become a deal until a later period — so this funnel is not chained to the lead counts above.</div>
       </div>
 
       {/* 4) RECENT ACTIVITY */}
@@ -372,8 +402,8 @@ export default async function InboundPage({ searchParams }) {
       </div>
 
       <div style={{ marginTop: 20, fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
-        <strong>Real</strong> (auto-populates as reps tag deals inbound in the queue): hero gauges, the funnel&apos;s Leads / Meetings / Opportunities / Won, Recent Activity, and Meetings &amp; Opps over time.
-        {" "}<strong>Sample / placeholder</strong> (tagged above): over-time by channel, Channel ROI cost columns, Google Ads campaigns, MQL / SQL, and Top of Funnel — pending spend access, the Zoho lifecycle field, and GA4.
+        <strong>Real</strong>: Inbound Leads (from the synced Zoho leads — raw records, not deduped; MQL / SQL are forward-only and read 0 until leads are qualified going forward), the hero gauges, the Deal Funnel (Meetings / Opportunities / Won), Recent Activity, and Meetings &amp; Opps over time.
+        {" "}<strong>Sample / placeholder</strong> (tagged above): over-time by channel, Channel ROI cost columns, Google Ads campaigns, and Top of Funnel — pending spend access and GA4.
       </div>
     </main>
   );
