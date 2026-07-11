@@ -118,15 +118,18 @@ export default async function InboundPage({ searchParams }) {
   const lb = (ok && m.leadsBlock) || { count: 0, junk: 0, junkPct: 0, mql: 0, sql: 0, bySource: [], avgNewToMql: null, avgMqlToSql: null };
   const goals = (ok && m.goals) || INBOUND_GOALS;
 
-  // Block B — DEAL funnel only (Meetings → Opps → Won). Leads/MQL/SQL live in
-  // Block A (a different entity), so they are NOT chained here. Percentages are
-  // internal to this block: "% of Meetings" (its own top) + "% from previous".
+  // Funnel: Leads → Meetings → Opps → Won. Leads (from `leads`) heads the funnel;
+  // the base-% column ("% of Leads") is rebased on Leads = 100%, while
+  // "% from previous" stays stage-to-stage. Conversions are directional (leads
+  // and deals are separate entities and may convert in a later period), so a
+  // stage ratio can exceed 100% — the note under the table covers it.
   const funnelRows = [
+    { name: "Leads", val: lb.count },
     { name: "Meetings", val: f.meetings },
     { name: "Opportunities", val: f.opps },
     { name: "Won", val: f.won },
   ];
-  const funnelTop = f.meetings || 1;
+  const funnelTop = lb.count || 1;
   let prevVal = null;
 
   // ---- Placeholder / sample datasets (clearly labeled) --------------------
@@ -177,7 +180,42 @@ export default async function InboundPage({ searchParams }) {
         <Gauge label="Closed Won" value={g.won} goal={goals.won} display={usdK(g.won)} sub={`${usd(g.won)} won · ${periodShort}`} />
       </div>
 
-      {/* 2A) INBOUND LEADS (Block A — reads `leads`, top-of-funnel) */}
+      {/* 2A) FUNNEL (Leads → Meetings → Opps → Won) */}
+      <div style={seclabel}>Inbound Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{periodShort}</span></div>
+      <div style={panel}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr>
+            <th style={th}>Stage</th>
+            <th style={{ ...th, textAlign: "right" }}>Count</th>
+            <th style={{ ...th, textAlign: "right" }}>% of Leads</th>
+            <th style={{ ...th, textAlign: "right" }}>% from Previous</th>
+            <th style={th}>Funnel</th>
+          </tr></thead>
+          <tbody>
+            {funnelRows.map((row) => {
+              const fromPrev = prevVal != null ? pct(row.val, prevVal) : "–";
+              prevVal = row.val;
+              const barW = Math.max(2, Math.min(100, (row.val / funnelTop) * 100));
+              return (
+                <tr key={row.name}>
+                  <td style={{ ...td, fontWeight: 500 }}>{row.name}</td>
+                  <td style={{ ...numTd, fontSize: 16, fontWeight: 700 }}>{fmt(row.val)}</td>
+                  <td style={numTd}>{pct(row.val, funnelTop)}</td>
+                  <td style={{ ...numTd, color: C.muted }}>{fromPrev}</td>
+                  <td style={{ ...td, width: "30%" }}>
+                    <div style={{ height: 14, background: C.line, borderRadius: 4, overflow: "hidden" }}>
+                      <div style={{ width: `${barW}%`, height: "100%", background: C.navy, borderRadius: 4 }} />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>Conversion %s are directional — leads and deals are separate entities and a lead may convert in a later period, so stage ratios can exceed 100%.</div>
+      </div>
+
+      {/* 2B) INBOUND LEADS (cards + by-source — below the funnel) */}
       <div style={seclabel}>Inbound Leads <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>real leads · {periodShort}</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
         {[
@@ -214,41 +252,6 @@ export default async function InboundPage({ searchParams }) {
           ))}
         </div>
       )}
-
-      {/* 2B) DEAL FUNNEL (Block B — reads `deals`, independent of leads) */}
-      <div style={seclabel}>Deal Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>inbound-sourced deals · {periodShort}</span></div>
-      <div style={panel}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead><tr>
-            <th style={th}>Stage</th>
-            <th style={{ ...th, textAlign: "right" }}>Count</th>
-            <th style={{ ...th, textAlign: "right" }}>% of Meetings</th>
-            <th style={{ ...th, textAlign: "right" }}>% from Previous</th>
-            <th style={th}>Funnel</th>
-          </tr></thead>
-          <tbody>
-            {funnelRows.map((row) => {
-              const fromPrev = prevVal != null ? pct(row.val, prevVal) : "–";
-              prevVal = row.val;
-              const barW = Math.max(2, Math.min(100, (row.val / funnelTop) * 100));
-              return (
-                <tr key={row.name}>
-                  <td style={{ ...td, fontWeight: 500 }}>{row.name}</td>
-                  <td style={{ ...numTd, fontSize: 16, fontWeight: 700 }}>{fmt(row.val)}</td>
-                  <td style={numTd}>{pct(row.val, funnelTop)}</td>
-                  <td style={{ ...numTd, color: C.muted }}>{fromPrev}</td>
-                  <td style={{ ...td, width: "30%" }}>
-                    <div style={{ height: 14, background: C.line, borderRadius: 4, overflow: "hidden" }}>
-                      <div style={{ width: `${barW}%`, height: "100%", background: C.navy, borderRadius: 4 }} />
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>Leads and deals are separate entities — a lead may not become a deal until a later period — so this funnel is not chained to the lead counts above.</div>
-      </div>
 
       {/* 4) RECENT ACTIVITY */}
       <div style={seclabel}>Recent Activity <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>inbound-tagged</span></div>
