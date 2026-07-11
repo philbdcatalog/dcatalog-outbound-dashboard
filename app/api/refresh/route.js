@@ -21,16 +21,27 @@ export async function POST(request) {
   }
 
   const origin = new URL(request.url).origin;
-  try {
-    const res = await fetch(`${origin}/api/sync/zoho?token=${encodeURIComponent(token)}`, {
+  const callSync = async (path) => {
+    const res = await fetch(`${origin}${path}?token=${encodeURIComponent(token)}`, {
       method: "GET",
       headers: { "cache-control": "no-store" },
     });
     const json = await res.json().catch(() => ({}));
-    if (!res.ok || json.ok === false) {
-      return Response.json({ ok: false, error: json.error || `sync failed (${res.status})` }, { status: 502 });
+    return { ok: res.ok && json.ok !== false, status: res.status, json };
+  };
+
+  try {
+    // Full deals/meetings sync first, then the inbound leads sync — a manual
+    // refresh should freshen everything the dashboard reads.
+    const deals = await callSync("/api/sync/zoho");
+    if (!deals.ok) {
+      return Response.json({ ok: false, error: deals.json.error || `deals sync failed (${deals.status})` }, { status: 502 });
     }
-    return Response.json({ ok: true, counts: json });
+    const leads = await callSync("/api/sync/zoho-leads");
+    if (!leads.ok) {
+      return Response.json({ ok: false, error: leads.json.error || `leads sync failed (${leads.status})`, deals: deals.json }, { status: 502 });
+    }
+    return Response.json({ ok: true, deals: deals.json, leads: leads.json });
   } catch (e) {
     return Response.json({ ok: false, error: e.message }, { status: 500 });
   }
