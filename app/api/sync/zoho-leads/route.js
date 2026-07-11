@@ -1,6 +1,14 @@
 import { getServiceClient } from "../../../../lib/supabase";
 import { getZohoAccessToken } from "../../../../lib/zoho";
-import { fetchLeadsSinceFloor, classifyInboundLead, mapLeadRow, LEADS_FLOOR_ISO } from "../../../../lib/zohoLeads";
+import {
+  fetchLeadsSinceFloor,
+  fetchLeadsSearch,
+  classifyInboundLead,
+  mapLeadRow,
+  LEADS_FLOOR_ISO,
+  BACKFILL_FLOOR_ISO,
+  BACKFILL_CRITERIA,
+} from "../../../../lib/zohoLeads";
 import { writeHeartbeat } from "../../../../lib/health";
 
 // GET /api/sync/zoho-leads
@@ -32,15 +40,21 @@ export async function GET(request) {
     return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
+  // One-time history backfill (Q1–Q2 2026) via ?backfill=1. Separate path — the
+  // ongoing cron stays on the Q3 floor so the hourly sync stays cheap.
+  const backfill = url.searchParams.get("backfill") === "1";
+
   const supabase = getServiceClient();
   const counts = { leads_seen: 0, leads_kept: 0, leads_upserted: 0, leads_skipped: 0 };
   const rowErrors = [];
 
   try {
     const accessToken = await getZohoAccessToken();
-    const floorMs = new Date(LEADS_FLOOR_ISO).getTime();
+    const floorMs = new Date(backfill ? BACKFILL_FLOOR_ISO : LEADS_FLOOR_ISO).getTime();
 
-    const leads = await fetchLeadsSinceFloor({ accessToken, floorMs });
+    const leads = backfill
+      ? await fetchLeadsSearch({ accessToken, criteria: BACKFILL_CRITERIA })
+      : await fetchLeadsSinceFloor({ accessToken, floorMs });
     counts.leads_seen = leads.length;
 
     const rows = [];
@@ -64,15 +78,16 @@ export async function GET(request) {
     }
 
     const ok = rowErrors.length === 0;
+    const tag = backfill ? "zoho-leads[backfill]" : "zoho-leads";
     await writeHeartbeat(
       supabase,
       ok,
       ok
-        ? `zoho-leads: ${counts.leads_kept} kept / ${counts.leads_skipped} skipped of ${counts.leads_seen} seen`
-        : `zoho-leads: ${rowErrors[0]}`
+        ? `${tag}: ${counts.leads_kept} kept / ${counts.leads_skipped} skipped of ${counts.leads_seen} seen`
+        : `${tag}: ${rowErrors[0]}`
     );
 
-    return Response.json({ ok, ...counts, row_errors: rowErrors.length, errors: rowErrors.slice(0, 5) }, ok ? undefined : { status: 500 });
+    return Response.json({ ok, backfill, ...counts, row_errors: rowErrors.length, errors: rowErrors.slice(0, 5) }, ok ? undefined : { status: 500 });
   } catch (err) {
     await writeHeartbeat(supabase, false, `zoho-leads: ${err.message}`);
     return Response.json({ ok: false, error: err.message, ...counts }, { status: 500 });

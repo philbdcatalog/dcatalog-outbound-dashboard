@@ -132,16 +132,12 @@ export default async function InboundPage({ searchParams }) {
   const funnelTop = lb.count || 1;
   let prevVal = null;
 
-  // ---- Placeholder / sample datasets (clearly labeled) --------------------
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
-  const leadsByChannel = months.map((label, i) => ({ label, website: 8 + i * 3, google_ads: 5 + i * 2, facebook_ads: 3 + i }));
-  const pipelineByChannel = months.map((label, i) => ({ label, website: 12 + i * 4, google_ads: 9 + i * 3, facebook_ads: 4 + i * 2 }));
-  const channelROI = [
-    { ch: "Google Ads", spend: 18000, leads: 92, mtg: 21, opps: 11, pipeline: 240000, won: 3 },
-    { ch: "Facebook Ads", spend: 7500, leads: 48, mtg: 9, opps: 4, pipeline: 86000, won: 1 },
-    { ch: "Website (organic)", spend: null, leads: 130, mtg: 28, opps: 14, pipeline: 310000, won: 5 },
-  ];
-  const roiTotal = channelROI.reduce((a, r) => ({ spend: (a.spend || 0) + (r.spend || 0), leads: a.leads + r.leads, mtg: a.mtg + r.mtg, opps: a.opps + r.opps, pipeline: a.pipeline + r.pipeline, won: a.won + r.won }), { spend: 0, leads: 0, mtg: 0, opps: 0, pipeline: 0, won: 0 });
+  // Real channel data (charts full-history; ROI period-scoped).
+  const channelData = (ok && m.channels) || { leadsByChannel: [], leadChannels: [], pipelineByChannel: [], pipeChannels: [] };
+  const roi = (ok && m.roi) || { rows: [], total: { label: "Marketing-sourced total", leads: 0, meetings: 0, opps: 0, pipeline: 0, won: 0 }, other: { label: "Other / unattributed", leads: 0, meetings: 0, opps: 0, pipeline: 0, won: 0 } };
+  const channelLegend = (chs) => chs.map((ch) => ({ label: CHANNEL_LABEL[ch] || ch, color: CHANNEL_COLOR[ch] || C.muted }));
+
+  // ---- Placeholder / sample datasets (still clearly labeled below) --------
   const adCampaigns = [
     { name: "Catalog Automation – Search", spend: 6200, pipeline: 98000 },
     { name: "Flipbook Demo – Search", spend: 4800, pipeline: 62000 },
@@ -287,23 +283,36 @@ export default async function InboundPage({ searchParams }) {
         C={C}
       />
 
-      {/* 6) OVER TIME BY CHANNEL */}
-      <div style={seclabel}>Over Time by Channel <SampleTag>sample — pending channel tagging</SampleTag></div>
+      {/* 6) OVER TIME BY CHANNEL (real) */}
+      <div style={seclabel}>Over Time by Channel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>full history</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div style={panel}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 10 }}>Leads by channel · monthly</div>
-          <StackedChannelBars data={leadsByChannel} channels={["website", "google_ads", "facebook_ads"]} />
-          <Legend items={[{ label: "Website", color: CHANNEL_COLOR.website }, { label: "Google Ads", color: CHANNEL_COLOR.google_ads }, { label: "Facebook Ads", color: CHANNEL_COLOR.facebook_ads }]} />
+          {channelData.leadsByChannel.length === 0 ? (
+            <div style={{ fontSize: 12, color: C.muted, padding: "18px 0" }}>No leads yet.</div>
+          ) : (
+            <>
+              <StackedChannelBars data={channelData.leadsByChannel} channels={channelData.leadChannels} />
+              <Legend items={channelLegend(channelData.leadChannels)} />
+            </>
+          )}
         </div>
         <div style={panel}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 10 }}>Pipeline by channel · monthly ($K)</div>
-          <StackedChannelBars data={pipelineByChannel} channels={["website", "google_ads", "facebook_ads"]} />
-          <Legend items={[{ label: "Website", color: CHANNEL_COLOR.website }, { label: "Google Ads", color: CHANNEL_COLOR.google_ads }, { label: "Facebook Ads", color: CHANNEL_COLOR.facebook_ads }]} />
+          {channelData.pipelineByChannel.length === 0 ? (
+            <div style={{ fontSize: 12, color: C.muted, padding: "18px 0" }}>No inbound pipeline yet.</div>
+          ) : (
+            <>
+              <StackedChannelBars data={channelData.pipelineByChannel} channels={channelData.pipeChannels} />
+              <Legend items={channelLegend(channelData.pipeChannels)} />
+            </>
+          )}
+          <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Inbound deal tracking began Q3 2026.</div>
         </div>
       </div>
 
-      {/* 7) CHANNEL ROI */}
-      <div style={seclabel}>Channel ROI <SampleTag>sample — pending spend access</SampleTag></div>
+      {/* 7) CHANNEL ROI (real, period-scoped) */}
+      <div style={seclabel}>Channel ROI <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{periodShort} · revenue-side pending spend access</span></div>
       <div style={panel}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr>
@@ -319,38 +328,49 @@ export default async function InboundPage({ searchParams }) {
             <th style={{ ...th, textAlign: "right" }}>CAC</th>
           </tr></thead>
           <tbody>
-            {channelROI.map((r) => (
-              <tr key={r.ch}>
-                <td style={td}>{r.ch}</td>
-                <td style={r.spend == null ? naTd : numTd}>{r.spend == null ? "n/a" : usd(r.spend)}</td>
+            {roi.rows.map((r) => (
+              <tr key={r.key}>
+                <td style={td}>{r.label}</td>
+                <td style={naTd}>n/a</td>
                 <td style={numTd}>{fmt(r.leads)}</td>
-                <td style={r.spend == null ? naTd : numTd}>{r.spend == null ? "n/a" : usd(r.spend / r.leads)}</td>
-                <td style={numTd}>{fmt(r.mtg)}</td>
-                <td style={r.spend == null ? naTd : numTd}>{r.spend == null ? "n/a" : usd(r.spend / r.mtg)}</td>
+                <td style={naTd}>n/a</td>
+                <td style={numTd}>{fmt(r.meetings)}</td>
+                <td style={naTd}>n/a</td>
                 <td style={numTd}>{fmt(r.opps)}</td>
                 <td style={numTd}>{usd(r.pipeline)}</td>
                 <td style={numTd}>{fmt(r.won)}</td>
-                <td style={r.spend == null || !r.won ? naTd : numTd}>{r.spend == null || !r.won ? "n/a" : usd(r.spend / r.won)}</td>
+                <td style={naTd}>n/a</td>
               </tr>
             ))}
             <tr>
-              <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>Marketing-sourced total</td>
-              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{usd(roiTotal.spend)}</td>
-              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(roiTotal.leads)}</td>
-              <td style={{ ...numTd, borderTop: `2px solid ${C.line}` }}>{usd(roiTotal.spend / roiTotal.leads)}</td>
-              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(roiTotal.mtg)}</td>
-              <td style={{ ...numTd, borderTop: `2px solid ${C.line}` }}>{usd(roiTotal.spend / roiTotal.mtg)}</td>
-              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(roiTotal.opps)}</td>
-              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{usd(roiTotal.pipeline)}</td>
-              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(roiTotal.won)}</td>
-              <td style={{ ...numTd, borderTop: `2px solid ${C.line}` }}>{usd(roiTotal.spend / roiTotal.won)}</td>
+              <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{roi.total.label}</td>
+              <td style={{ ...naTd, borderTop: `2px solid ${C.line}` }}>n/a</td>
+              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(roi.total.leads)}</td>
+              <td style={{ ...naTd, borderTop: `2px solid ${C.line}` }}>n/a</td>
+              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(roi.total.meetings)}</td>
+              <td style={{ ...naTd, borderTop: `2px solid ${C.line}` }}>n/a</td>
+              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(roi.total.opps)}</td>
+              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{usd(roi.total.pipeline)}</td>
+              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(roi.total.won)}</td>
+              <td style={{ ...naTd, borderTop: `2px solid ${C.line}` }}>n/a</td>
             </tr>
-            <tr>
-              <td style={{ ...td, color: C.muted }}>Other / unattributed</td>
-              <td style={naTd} colSpan={9}>n/a — pending source-channel tagging</td>
-            </tr>
+            {(roi.other.leads > 0 || roi.other.meetings > 0 || roi.other.opps > 0 || roi.other.pipeline > 0 || roi.other.won > 0) && (
+              <tr>
+                <td style={{ ...td, color: C.muted }}>{roi.other.label}</td>
+                <td style={naTd}>n/a</td>
+                <td style={numTd}>{fmt(roi.other.leads)}</td>
+                <td style={naTd}>n/a</td>
+                <td style={numTd}>{fmt(roi.other.meetings)}</td>
+                <td style={naTd}>n/a</td>
+                <td style={numTd}>{fmt(roi.other.opps)}</td>
+                <td style={numTd}>{usd(roi.other.pipeline)}</td>
+                <td style={numTd}>{fmt(roi.other.won)}</td>
+                <td style={naTd}>n/a</td>
+              </tr>
+            )}
           </tbody>
         </table>
+        <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>Spend, Cost/Lead, Cost/Mtg, and CAC are pending Google Ads spend access.</div>
       </div>
 
       {/* 8) GOOGLE ADS BY CAMPAIGN */}
@@ -405,8 +425,8 @@ export default async function InboundPage({ searchParams }) {
       </div>
 
       <div style={{ marginTop: 20, fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
-        <strong>Real</strong>: Inbound Leads (from the synced Zoho leads — raw records, not deduped; MQL / SQL are forward-only and read 0 until leads are qualified going forward), the hero gauges, the Deal Funnel (Meetings / Opportunities / Won), Recent Activity, and Meetings &amp; Opps over time.
-        {" "}<strong>Sample / placeholder</strong> (tagged above): over-time by channel, Channel ROI cost columns, Google Ads campaigns, and Top of Funnel — pending spend access and GA4.
+        <strong>Real</strong>: Inbound Leads (from the synced Zoho leads — raw records, not deduped; MQL / SQL are forward-only and read 0 until leads are qualified going forward), the hero gauges, the funnel (Leads / Meetings / Opportunities / Won), Recent Activity, Meetings &amp; Opps over time, Leads &amp; Pipeline by channel, and the Channel ROI table&apos;s Leads / Meetings / Opps / Pipeline / Won.
+        {" "}<strong>Pending</strong>: the ROI table&apos;s Spend / Cost-per / CAC columns (Google Ads spend access), Google Ads campaigns, and Top of Funnel (GA4).
       </div>
     </main>
   );
