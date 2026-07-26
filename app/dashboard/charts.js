@@ -8,9 +8,11 @@ import { SHADOW, RADIUS } from "../../lib/theme";
 // render at the same visual scale (consistent fonts/heights) and few-bar cards
 // fill their width with wider bars instead of looking sparse. Renders an empty
 // axis gracefully when every value is 0.
-function Bars({ data, totalKey, subKey, totalColor, subColor, C }) {
+function Bars({ data, totalKey, subKey, totalColor, subColor, goal, C }) {
   const n = data.length || 1;
-  const max = Math.max(1, ...data.map((d) => d[totalKey] || 0));
+  // Include the goal in the scale so its line is never clipped off the top.
+  const hasGoal = typeof goal === "number" && goal > 0;
+  const max = Math.max(1, hasGoal ? goal : 0, ...data.map((d) => d[totalKey] || 0));
   const pad = 6, top = 16, plotH = 110, baseY = top + plotH;
   const W = 300, H = baseY + 26;
   const slotW = (W - pad * 2) / n;
@@ -18,6 +20,7 @@ function Bars({ data, totalKey, subKey, totalColor, subColor, C }) {
   // When crowded (weekly, 12 bars), thin x-labels to every other — anchored on
   // the most recent bar so the latest period always keeps its label.
   const showLabel = (i) => n <= 8 || (n - 1 - i) % 2 === 0;
+  const goalY = hasGoal ? baseY - (goal / max) * plotH : null;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
       {data.map((d, i) => {
@@ -38,6 +41,12 @@ function Bars({ data, totalKey, subKey, totalColor, subColor, C }) {
           </g>
         );
       })}
+      {hasGoal && (
+        <g>
+          <line x1={pad} y1={goalY} x2={W - pad} y2={goalY} stroke="#c4773a" strokeWidth={1.25} strokeDasharray="4 3" />
+          <text x={W - pad} y={goalY - 3} textAnchor="end" fontSize={9} fill="#c4773a">goal {Math.round(goal)}</text>
+        </g>
+      )}
       <line x1={0} y1={baseY} x2={W} y2={baseY} stroke={C.line} strokeWidth={1} />
     </svg>
   );
@@ -59,7 +68,9 @@ function Legend({ items, C }) {
 // Quarterly | Monthly | Weekly shown as THREE separate equal white cards in a
 // row, each its own panel with a sub-label. Shared legend sits under the row.
 // Same series shape and colors across all three.
-export function TripleBars({ quarterly, monthly, weekly, totalKey, subKey, totalColor, subColor, legend, C }) {
+// `goal` (optional) is the QUARTERLY target for `totalKey`; it's pro-rated per
+// view (quarterly as-is, monthly ÷3, weekly ÷13) and drawn as a dashed pace line.
+export function TripleBars({ quarterly, monthly, weekly, totalKey, subKey, totalColor, subColor, legend, goal, C }) {
   const card = {
     flex: "1 1 0",
     minWidth: 0,
@@ -70,10 +81,11 @@ export function TripleBars({ quarterly, monthly, weekly, totalKey, subKey, total
     boxShadow: SHADOW,
   };
   const subLabel = { fontSize: 11, fontWeight: 700, color: C.inkSoft, marginBottom: 8 };
+  const hasGoal = typeof goal === "number" && goal > 0;
   const views = [
-    { label: "Quarterly", data: quarterly },
-    { label: "Monthly", data: monthly },
-    { label: "Weekly", data: weekly },
+    { label: "Quarterly", data: quarterly, goal: hasGoal ? goal : undefined },
+    { label: "Monthly", data: monthly, goal: hasGoal ? goal / 3 : undefined },
+    { label: "Weekly", data: weekly, goal: hasGoal ? goal / 13 : undefined },
   ];
   return (
     <div>
@@ -81,11 +93,11 @@ export function TripleBars({ quarterly, monthly, weekly, totalKey, subKey, total
         {views.map((v) => (
           <div key={v.label} style={card}>
             <div style={subLabel}>{v.label}</div>
-            <Bars data={v.data} totalKey={totalKey} subKey={subKey} totalColor={totalColor} subColor={subColor} C={C} />
+            <Bars data={v.data} totalKey={totalKey} subKey={subKey} totalColor={totalColor} subColor={subColor} goal={v.goal} C={C} />
           </div>
         ))}
       </div>
-      <Legend items={legend} C={C} />
+      <Legend items={hasGoal ? [...legend, { label: "Goal (pace)", color: "#c4773a" }] : legend} C={C} />
     </div>
   );
 }

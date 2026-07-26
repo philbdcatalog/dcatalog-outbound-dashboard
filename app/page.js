@@ -287,7 +287,7 @@ export default async function NewBusinessPage({ searchParams }) {
       {/* 6) SALES STAGE ANALYSIS (pipeline snapshot — not period-filtered) */}
       <div style={seclabel}>Sales Stage Analysis <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>pipeline snapshot · not period-filtered</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 14, marginBottom: 14 }}>
-        {statCard("Avg Deal Size", usd(m.sales.avgDealSize), "avg won deal size · all-time")}
+        {statCard("Avg Deal Size", usd(m.sales.avgDealSize), "avg won deal ≥ $1k · all-time")}
         {statCard(
           "Avg Sales Cycle",
           m.sales.avgCycleDays != null ? `${m.sales.avgCycleDays.toFixed(1)} days` : "—",

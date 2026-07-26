@@ -275,6 +275,7 @@ export default async function OutboundDashboard({ searchParams }) {
         totalColor={C.navy}
         subColor={C.linkedin}
         legend={[{ label: "Meetings booked", color: C.navy }, { label: "Became opps", color: C.linkedin }]}
+        goal={d.goals.meetings}
         C={C}
       />
 

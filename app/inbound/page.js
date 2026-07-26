@@ -115,7 +115,7 @@ export default async function InboundPage({ searchParams }) {
   const ok = m?.ok;
   const g = ok ? m.gauges : { pipeline: 0, won: 0, meetings: 0 };
   const f = ok ? m.funnel : { meetings: 0, opps: 0, won: 0 };
-  const lb = (ok && m.leadsBlock) || { count: 0, junk: 0, junkPct: 0, mql: 0, sql: 0, bySource: [], avgNewToMql: null, avgMqlToSql: null };
+  const lb = (ok && m.leadsBlock) || { count: 0, junk: 0, junkPct: 0, mql: 0, sql: 0, booked: 0, held: 0, noShow: 0, showRate: 0, bySource: [], avgNewToMql: null, avgMqlToSql: null };
   const goals = (ok && m.goals) || INBOUND_GOALS;
 
   // Funnel: Leads → Meetings → Opps → Won. Leads (from `leads`) heads the funnel;
@@ -232,6 +232,21 @@ export default async function InboundPage({ searchParams }) {
         {lb.avgNewToMql != null && <> · Avg New→MQL {lb.avgNewToMql.toFixed(1)}d</>}
         {lb.avgMqlToSql != null && <> · Avg MQL→SQL {lb.avgMqlToSql.toFixed(1)}d</>}
       </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginTop: 12 }}>
+        {[
+          { label: "Meetings Booked", value: fmt(lb.booked), sub: "Lead Status = Meeting Booked" },
+          { label: "Meetings Held", value: fmt(lb.held), sub: "Meeting Status = Performed" },
+          { label: "Show Rate", value: `${(lb.showRate * 100).toFixed(0)}%`, sub: "held ÷ booked" },
+          { label: "No-Shows", value: fmt(lb.noShow), sub: "Need to Reschedule" },
+        ].map((s) => (
+          <div key={s.label} style={card}>
+            <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.2, color: C.muted }}>{s.label}</div>
+            <div style={{ fontSize: 30, fontWeight: 700, color: C.navy, marginTop: 8 }}>{s.value}</div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 4 }}>{s.sub}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>Held / no-show come from Zoho Meeting_Status (rep-filled) — show-rate accuracy depends on reps setting it.</div>
       {lb.bySource.length > 0 && (
         <div style={{ ...panel, marginTop: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 10 }}>Leads by source · {periodShort}</div>
@@ -280,6 +295,7 @@ export default async function InboundPage({ searchParams }) {
         totalColor={C.navy}
         subColor={C.linkedin}
         legend={[{ label: "Meetings booked", color: C.navy }, { label: "Became opps", color: C.linkedin }]}
+        goal={goals.meetings}
         C={C}
       />
 
