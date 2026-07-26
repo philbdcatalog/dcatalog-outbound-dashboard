@@ -3,9 +3,10 @@
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { C, SHADOW } from "../lib/theme";
 
-// Rep selector for the AE dashboard. Pushes ?rep=<name|all> while preserving the
-// current ?period. `options` is a list of rep names; "All AEs" maps to "all".
-export default function RepSelector({ value, options }) {
+// Rep selector for the AE / SDR dashboards. Pushes ?<param>=<name|all> while
+// preserving other query params. `options` is a list of names; the "all" option
+// clears the param. `param` defaults to "rep"; `label`/`allLabel` are cosmetic.
+export default function RepSelector({ value, options, param = "rep", label = "Rep", allLabel = "All AEs" }) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -13,8 +14,8 @@ export default function RepSelector({ value, options }) {
   const onChange = (e) => {
     const params = new URLSearchParams(sp.toString());
     const v = e.target.value;
-    if (v && v !== "all") params.set("rep", v);
-    else params.delete("rep");
+    if (v && v !== "all") params.set(param, v);
+    else params.delete(param);
     const qs = params.toString();
     router.push(qs ? `${pathname}?${qs}` : pathname);
   };
@@ -22,7 +23,7 @@ export default function RepSelector({ value, options }) {
   return (
     <div style={{ background: C.panel, border: `1px solid ${C.line}`, borderRadius: 10, padding: "8px 12px 9px", boxShadow: SHADOW }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>Rep</span>
+        <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>{label}</span>
         <select
           value={value}
           onChange={onChange}
@@ -31,7 +32,7 @@ export default function RepSelector({ value, options }) {
             borderRadius: 7, padding: "4px 8px", fontSize: 13, fontWeight: 600, cursor: "pointer", outline: "none",
           }}
         >
-          <option value="all">All AEs</option>
+          <option value="all">{allLabel}</option>
           {options.map((name) => (
             <option key={name} value={name}>{name}</option>
           ))}

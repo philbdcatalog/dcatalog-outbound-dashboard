@@ -10,6 +10,7 @@ export default function Nav({ active, reconPending = 0 }) {
     { key: "queue", href: "/queue", label: "Recon Queue", badge: reconPending },
     { key: "inbound", href: "/inbound", label: "Inbound" },
     { key: "ae", href: "/ae", label: "AE Dashboard" },
+    { key: "sdr", href: "/sdr", label: "SDR Dashboard" },
     { key: "tam", href: "/tam", label: "TAM" },
     { key: "goals", href: "/goals", label: "Goals" },
     { key: "health", href: "/health", label: "Health" },

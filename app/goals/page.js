@@ -1,9 +1,18 @@
 import { getServiceClient } from "../../lib/supabase";
 import { C } from "../../lib/theme";
 import { currentQuarter } from "../../lib/quarter";
-import { AE_ROSTER } from "../../lib/roster";
+import { AE_ROSTER_NAMES, SDR_ROSTER_NAMES } from "../../lib/roster";
+import { monthKeyOf } from "../../lib/sdr";
 import GoalsForm from "./GoalsForm";
 import RepGoalsForm from "./RepGoalsForm";
+import SdrTargetsForm from "./SdrTargetsForm";
+
+// Ramp months offered in the SDR quota editor (Q3 2026 ramp).
+const SDR_MONTHS = [
+  { key: "2026-07", label: "July 2026" },
+  { key: "2026-08", label: "August 2026" },
+  { key: "2026-09", label: "September 2026" },
+];
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -13,7 +22,7 @@ async function getSettings() {
   try {
     const supabase = getServiceClient();
     const periodStart = currentQuarter(new Date()).start.toISOString().slice(0, 10);
-    const [settingsRes, repGoalsRes] = await Promise.all([
+    const [settingsRes, repGoalsRes, sdrTargetsRes] = await Promise.all([
       supabase
         .from("app_settings")
         .select("meeting_goal, opps_goal, pipeline_goal, won_goal, nb_meeting_goal, nb_opp_goal, nb_won_goal, inbound_meeting_goal, inbound_pipeline_goal, inbound_won_goal, cost_email, cost_linkedin, cost_phone, cost_multichannel")
@@ -24,11 +33,16 @@ async function getSettings() {
         .select("rep_name, meeting_goal, opp_goal, pipeline_goal, won_goal")
         .eq("period_type", "quarter")
         .eq("period_start", periodStart),
+      supabase.from("sdr_targets").select("rep_name, month, opp_quota"),
     ]);
     if (settingsRes.error) return { ok: false, error: settingsRes.error.message };
     const byRep = {};
     for (const r of repGoalsRes.data || []) byRep[r.rep_name] = r;
-    return { ok: true, settings: settingsRes.data || {}, repGoalsByRep: byRep };
+    const sdrByKey = {};
+    if (sdrTargetsRes && !sdrTargetsRes.error) {
+      for (const r of sdrTargetsRes.data || []) sdrByKey[`${r.rep_name}|${monthKeyOf(r.month)}`] = r.opp_quota;
+    }
+    return { ok: true, settings: settingsRes.data || {}, repGoalsByRep: byRep, sdrTargetsByKey: sdrByKey };
   } catch (err) {
     return { ok: false, error: err.message };
   }
@@ -52,7 +66,8 @@ export default async function GoalsPage() {
       ) : (
         <>
           <GoalsForm initial={res.settings} />
-          <RepGoalsForm roster={AE_ROSTER} byRep={res.repGoalsByRep} />
+          <RepGoalsForm roster={AE_ROSTER_NAMES} byRep={res.repGoalsByRep} />
+          <SdrTargetsForm roster={SDR_ROSTER_NAMES} months={SDR_MONTHS} byKey={res.sdrTargetsByKey} />
         </>
       )}
     </main>
