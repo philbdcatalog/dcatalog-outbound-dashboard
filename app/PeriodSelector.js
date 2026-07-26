@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { C, SHADOW } from "../lib/theme";
 
 // Corner period selector (replaces the static quarter badge). Selecting a period
@@ -11,10 +11,17 @@ import { C, SHADOW } from "../lib/theme";
 export default function PeriodSelector({ value, options, subtitle }) {
   const router = useRouter();
   const pathname = usePathname();
+  const sp = useSearchParams();
 
   const onChange = (e) => {
+    // Preserve other query params (e.g. the AE dashboard's ?rep) when changing
+    // the period.
+    const params = new URLSearchParams(sp.toString());
     const v = e.target.value;
-    router.push(v ? `${pathname}?period=${encodeURIComponent(v)}` : pathname);
+    if (v) params.set("period", v);
+    else params.delete("period");
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
   };
 
   return (

@@ -29,5 +29,5 @@ export async function middleware(request) {
 }
 
 export const config = {
-  matcher: ["/", "/outbound/:path*", "/queue/:path*", "/inbound/:path*", "/tam/:path*", "/goals/:path*", "/health/:path*", "/api/queue/:path*", "/api/tam/:path*", "/api/settings/:path*"],
+  matcher: ["/", "/outbound/:path*", "/queue/:path*", "/inbound/:path*", "/ae/:path*", "/tam/:path*", "/goals/:path*", "/health/:path*", "/api/queue/:path*", "/api/tam/:path*", "/api/settings/:path*", "/api/rep-goals/:path*"],
 };
