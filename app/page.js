@@ -1,6 +1,7 @@
 import { getNewBusinessData } from "../lib/newbusiness";
 import { C, card, eyebrow } from "../lib/theme";
 import { resolvePeriod, periodOptions } from "../lib/quarter";
+import { repPhotoPath } from "../lib/roster";
 import PeriodSelector from "./PeriodSelector";
 import Nav from "./Nav";
 
@@ -15,16 +16,16 @@ const pct2 = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(2) + "%" : "–");
 const pct1 = (a, b) => (b > 0 ? ((a / b) * 100).toFixed(1) + "%" : "–");
 const fmtDate = (s) => (s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "—");
 
-const REP_PHOTOS = { "Traci Vrana": "/reps/traci.jpg", "Phil Benavides": "/reps/phil.jpg", "Jonathan Marin": "/reps/jonathan.jpg" };
 const MONTH_COLORS = ["#33457c", "#2a9d8f", "#c4773a", "#7a5cc0", "#2f9e5e", "#b0567f", "#3b7dd8", "#d4a72c"];
 const SRC_COLORS = { Inbound: "#2a9d8f", "Outbound Email": "#33457c", "Outbound LinkedIn": "#2f4ba0", "Cold Call": "#c4773a", Other: "#8a93a8", "Referral / Manual": "#b0567f" };
 
 function RepAvatar({ name }) {
   const size = 28;
   const base = { width: size, height: size, borderRadius: "50%", flexShrink: 0 };
-  if (REP_PHOTOS[name]) {
+  const photo = repPhotoPath(name);
+  if (photo) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={REP_PHOTOS[name]} alt={name} width={size} height={size} style={{ ...base, objectFit: "cover" }} />;
+    return <img src={photo} alt={name} width={size} height={size} style={{ ...base, objectFit: "cover" }} />;
   }
   const initials = (name || "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
   return <span style={{ ...base, display: "inline-flex", alignItems: "center", justifyContent: "center", background: C.line, color: C.navy, fontSize: 11, fontWeight: 700 }}>{initials || "?"}</span>;
