@@ -13,6 +13,10 @@
       "schedule": "0 */6 * * *"
     },
     {
+      "path": "/api/sync/justcall",
+      "schedule": "0 */2 * * *"
+    },
+    {
       "path": "/api/cron/health-alert",
       "schedule": "0 * * * *"
     }
