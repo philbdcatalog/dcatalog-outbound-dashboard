@@ -148,7 +148,7 @@ export default async function SDRDashboard({ searchParams }) {
               display={fmt(r.opps)}
               caption={isMtd ? (r.quota > 0 ? `Quota ${fmt(r.quota)} · pace ${r.pace.toFixed(1)}` : "Ramp quota 0") : `Pace ${r.pace} / wk`}
             />
-            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>opps proxy: meetings that became deals · quality <Pending>AE acceptance flag</Pending></div>
+            <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>qualified opps · SDR-booked accounts that reached opp stage</div>
           </div>
         ))}
       </div>
@@ -196,10 +196,10 @@ export default async function SDRDashboard({ searchParams }) {
             { label: "Live connects", val: t.connects, pending: m.connectsPending, unblock: "define connect dispositions" },
             { label: "Meetings booked", val: t.booked, pending: false },
             { label: "Meetings held", val: t.held, pending: false },
-            { label: "Qualified opps", val: t.opps, pending: false, note: "proxy" },
+            { label: "Qualified opps", val: t.opps, pending: false },
           ];
           const top = t.dials || Math.max(1, t.booked, t.held, t.opps);
-          const ratioLabels = ["Connect rate", "Connect→booked", "Show rate", "Accept rate"];
+          const ratioLabels = ["Connect rate", "Connect→booked", "Show rate", "Held→Opp"];
           let prev = null, prevPending = false;
           return (
             <div>
@@ -210,8 +210,7 @@ export default async function SDRDashboard({ searchParams }) {
                 let ratio = null;
                 if (i > 0) {
                   const rl = ratioLabels[i - 1];
-                  if (rl === "Accept rate") ratio = <Pending>AE acceptance flag</Pending>;
-                  else if (prevPending || isPend || prev == null || prev === 0) ratio = <span style={{ color: C.muted }}>{rl}: –</span>;
+                  if (prevPending || isPend || prev == null || prev === 0) ratio = <span style={{ color: C.muted }}>{rl}: –</span>;
                   else ratio = <span style={{ color: C.inkSoft }}>{rl}: <strong>{Math.round((s.val / prev) * 100)}%</strong></span>;
                 }
                 prev = isPend ? prev : s.val;
@@ -258,19 +257,8 @@ export default async function SDRDashboard({ searchParams }) {
         </div>
       </div>
 
-      {/* SECTION 4 — QUALITY & REP DETAIL */}
-      <div style={seclabel}>Quality &amp; Rep Detail</div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
-        <div style={card}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>Opps by account tier</div>
-          <div style={{ fontSize: 12.5, color: C.inkSoft }}>Tier 1 Hot · Tier 2 · below bar — <Pending>ICP tier fields</Pending></div>
-        </div>
-        <div style={card}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 8 }}>AE acceptance rate</div>
-          <div style={{ fontSize: 12.5, color: C.inkSoft }}>per paired AE (Jay, Phil) — <Pending>AE acceptance flag</Pending></div>
-        </div>
-      </div>
-
+      {/* SECTION 4 — REP DETAIL (scoreboard) */}
+      <div style={seclabel}>Rep Detail <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>per-SDR scoreboard · {rangeLabel}</span></div>
       <div style={panel}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr>
@@ -315,7 +303,7 @@ export default async function SDRDashboard({ searchParams }) {
           </tbody>
         </table>
         <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>
-          Dials from JustCall. Booked/Held credited to the SDR via Zoho Meeting_Booked_By (interim proxy until Outreach_Lane lands). Connects &amp; qualified-opp quality are pending the connect-disposition list and the AE-acceptance flag.
+          Dials from JustCall. Booked / Held / Qualified opps credit the SDR via Zoho <strong>Meeting_Booked_By</strong> (lead owner is routing only). Live connects are the only pending metric — awaiting the connect-disposition list.
         </div>
       </div>
     </main>
