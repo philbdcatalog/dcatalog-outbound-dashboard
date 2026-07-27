@@ -278,8 +278,8 @@ export default async function SDRDashboard({ searchParams }) {
               <tr key={r.sdr}>
                 <td style={td}><span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><RepAvatar name={r.sdr} size={26} />{r.sdr}</span></td>
                 <td style={numTd}>{fmt(r.dials)}</td>
-                <td style={r.connects == null ? pendTd : numTd}>{r.connects == null ? "pending" : fmt(r.connects)}</td>
-                <td style={r.connectRate == null ? pendTd : numTd}>{r.connectRate == null ? "pending" : `${Math.round(r.connectRate * 100)}%`}</td>
+                <td style={numTd}>{fmt(r.connects)}</td>
+                <td style={numTd}>{r.connectRate == null ? "–" : `${Math.round(r.connectRate * 100)}%`}</td>
                 <td style={numTd}>{fmt(r.booked)}</td>
                 <td style={numTd}>{fmt(r.held)}</td>
                 <td style={numTd}>{(r.showRate * 100).toFixed(0)}%</td>
@@ -291,8 +291,8 @@ export default async function SDRDashboard({ searchParams }) {
             <tr>
               <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>Team</td>
               <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(m.team.dials)}</td>
-              <td style={{ ...(m.team.connects == null ? pendTd : numTd), fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{m.team.connects == null ? "pending" : fmt(m.team.connects)}</td>
-              <td style={{ ...(m.team.connectRate == null ? pendTd : numTd), fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{m.team.connectRate == null ? "pending" : `${Math.round(m.team.connectRate * 100)}%`}</td>
+              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(m.team.connects)}</td>
+              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{m.team.connectRate == null ? "–" : `${Math.round(m.team.connectRate * 100)}%`}</td>
               <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(m.team.booked)}</td>
               <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(m.team.held)}</td>
               <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{(m.team.showRate * 100).toFixed(0)}%</td>
@@ -303,7 +303,7 @@ export default async function SDRDashboard({ searchParams }) {
           </tbody>
         </table>
         <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>
-          Dials from JustCall. Booked / Held / Qualified opps credit the SDR via Zoho <strong>Meeting_Booked_By</strong> (lead owner is routing only). Live connects are the only pending metric — awaiting the connect-disposition list.
+          Dials = outbound JustCall calls (Sales Dialer + phone). Connects are machine-classified by JustCall (call_info.type = Connected). Booked / Held / Qualified opps credit the SDR via Zoho <strong>Meeting_Booked_By</strong> (lead owner is routing only).
         </div>
       </div>
     </main>

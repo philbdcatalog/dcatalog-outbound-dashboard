@@ -1,5 +1,5 @@
 import { getServiceClient } from "../../../../lib/supabase";
-import { fetchCalls, mapCallRow } from "../../../../lib/justcall";
+import { fetchCalls, mapCallRow, fetchSalesDialerCalls, mapSalesDialerRow } from "../../../../lib/justcall";
 import { writeHeartbeat } from "../../../../lib/health";
 
 // GET /api/sync/justcall
@@ -38,6 +38,7 @@ export async function GET(request) {
   }
 
   const counts = { calls_seen: 0, calls_upserted: 0, calls_skipped_no_id: 0 };
+  const byProduct = { phone: 0, sales_dialer: 0 };
   const agentsSeen = new Set();
 
   try {
@@ -65,26 +66,32 @@ export async function GET(request) {
     }
     const nowISO = new Date().toISOString();
 
-    const calls = await fetchCalls({ sinceISO });
-    counts.calls_seen = calls.length;
+    // (1) Phone-number product (/calls) — mostly inbound strays.
+    const phoneCalls = await fetchCalls({ sinceISO });
+    // (2) Sales Dialer product (/sales_dialer/calls) — the SDRs' outbound dials.
+    const sdCalls = await fetchSalesDialerCalls({ sinceISO });
+    counts.calls_seen = phoneCalls.length + sdCalls.length;
 
-    // Log the first raw call so the real field shape is visible in Vercel logs.
-    if (calls.length > 0) {
-      console.log("[justcall-sync] RAW CALL PAYLOAD", JSON.stringify(calls[0]));
-    } else {
-      console.log("[justcall-sync] no calls in window", sinceISO, "->", nowISO);
-    }
+    // Log the first raw call of each product so the real shapes are visible.
+    if (phoneCalls.length > 0) console.log("[justcall-sync] RAW CALL PAYLOAD (phone)", JSON.stringify(phoneCalls[0]));
+    if (sdCalls.length > 0) console.log("[justcall-sync] RAW CALL PAYLOAD (sales_dialer)", JSON.stringify(sdCalls[0]));
+    if (phoneCalls.length === 0 && sdCalls.length === 0) console.log("[justcall-sync] no calls in window", sinceISO, "->", nowISO);
 
     const rows = [];
-    for (const call of calls) {
-      const row = mapCallRow(call);
-      if (!row) {
-        counts.calls_skipped_no_id++;
-        continue;
+    const collect = (list, mapper, product) => {
+      for (const call of list) {
+        const row = mapper(call);
+        if (!row) {
+          counts.calls_skipped_no_id++;
+          continue;
+        }
+        byProduct[product]++;
+        if (row.agent_email) agentsSeen.add(row.agent_email);
+        rows.push(row);
       }
-      if (row.agent_email) agentsSeen.add(row.agent_email);
-      rows.push(row);
-    }
+    };
+    collect(phoneCalls, mapCallRow, "phone");
+    collect(sdCalls, mapSalesDialerRow, "sales_dialer");
 
     for (const part of chunk(rows, 500)) {
       const { error } = await supabase
@@ -99,6 +106,7 @@ export async function GET(request) {
     return Response.json({
       ok: true,
       ...counts,
+      by_product: byProduct,
       agents_seen: [...agentsSeen],
       window: { from: sinceISO, to: nowISO },
     });
