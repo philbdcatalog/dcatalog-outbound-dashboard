@@ -10,6 +10,7 @@ export const fetchCache = "force-no-store";
 export const revalidate = 0;
 
 const fmt = (n) => (n ?? 0).toLocaleString();
+const fmtDate = (s) => (s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "—");
 const usd = (n) => "$" + Math.round(n ?? 0).toLocaleString();
 const usdK = (n) => "$" + Math.round((n ?? 0) / 1000) + "K";
 const mins = (sec) => (sec ? `${Math.round(sec / 60)}m` : "0m");
@@ -305,6 +306,42 @@ export default async function SDRDashboard({ searchParams }) {
         <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>
           Dials = outbound JustCall calls (Sales Dialer + phone). Connects are machine-classified by JustCall (call_info.type = Connected). Booked / Held / Qualified opps credit the SDR via Zoho <strong>Meeting_Booked_By</strong> (lead owner is routing only).
         </div>
+      </div>
+
+      {/* SDR MEETINGS SET */}
+      <div style={seclabel}>SDR Meetings Set <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{label} · {rangeLabel} · {m.meetingsSet.length} meetings</span></div>
+      <div style={{ ...panel, overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead><tr>
+            <th style={th}>Company</th>
+            <th style={th}>Contact</th>
+            <th style={th}>Booked by</th>
+            <th style={th}>Status</th>
+            <th style={th}>Source</th>
+            <th style={th}>Date</th>
+            <th style={th}>Owner</th>
+          </tr></thead>
+          <tbody>
+            {m.meetingsSet.length === 0 ? (
+              <tr><td style={{ ...td, color: C.muted }} colSpan={7}>No meetings booked in this range.</td></tr>
+            ) : (
+              m.meetingsSet.map((r, i) => {
+                const sc = r.status === "Held" ? C.green : r.status === "No-show" ? "#c0392b" : C.navy;
+                return (
+                  <tr key={i}>
+                    <td style={{ ...td, fontWeight: 500 }}>{r.company}</td>
+                    <td style={{ ...td, color: C.inkSoft }}>{r.contact || "—"}</td>
+                    <td style={{ ...td, color: C.inkSoft }}>{r.bookedBy || "—"}</td>
+                    <td style={td}><span style={{ fontSize: 11.5, fontWeight: 700, color: sc }}>{r.status}</span></td>
+                    <td style={{ ...td, color: C.inkSoft }}>{r.source || "—"}</td>
+                    <td style={{ ...td, color: C.inkSoft }}>{fmtDate(r.bookedDate)}</td>
+                    <td style={{ ...td, color: C.muted }}>{r.owner || "—"}</td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
     </main>
   );

@@ -8,6 +8,7 @@ import {
   LEADS_FLOOR_ISO,
   BACKFILL_FLOOR_ISO,
   BACKFILL_CRITERIA,
+  BACKFILL_MBB_CRITERIA,
 } from "../../../../lib/zohoLeads";
 import { writeHeartbeat } from "../../../../lib/health";
 
@@ -52,9 +53,22 @@ export async function GET(request) {
     const accessToken = await getZohoAccessToken();
     const floorMs = new Date(backfill ? BACKFILL_FLOOR_ISO : LEADS_FLOOR_ISO).getTime();
 
-    const leads = backfill
-      ? await fetchLeadsSearch({ accessToken, criteria: BACKFILL_CRITERIA })
-      : await fetchLeadsSinceFloor({ accessToken, floorMs });
+    let leads;
+    if (backfill) {
+      // Two search passes: the inbound allowlist + leads booked by a roster rep
+      // (Meeting_Booked_By), unioned and deduped by Zoho lead id. The ongoing
+      // (non-backfill) path uses getRecords which already pulls ALL leads since
+      // the floor, so classifyInboundLead's Meeting_Booked_By keep covers it.
+      const [allow, booked] = await Promise.all([
+        fetchLeadsSearch({ accessToken, criteria: BACKFILL_CRITERIA }),
+        fetchLeadsSearch({ accessToken, criteria: BACKFILL_MBB_CRITERIA }),
+      ]);
+      const byId = new Map();
+      for (const l of [...allow, ...booked]) if (l && l.id != null) byId.set(String(l.id), l);
+      leads = [...byId.values()];
+    } else {
+      leads = await fetchLeadsSinceFloor({ accessToken, floorMs });
+    }
     counts.leads_seen = leads.length;
 
     const rows = [];
