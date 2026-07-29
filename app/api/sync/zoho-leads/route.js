@@ -5,6 +5,7 @@ import {
   fetchLeadsSearch,
   classifyInboundLead,
   mapLeadRow,
+  ensureMeetingForBookedLead,
   LEADS_FLOOR_ISO,
   BACKFILL_FLOOR_ISO,
   BACKFILL_CRITERIA,
@@ -89,6 +90,18 @@ export async function GET(request) {
       const { error } = await supabase.from("leads").upsert(part, { onConflict: "zoho_lead_id" });
       if (error) rowErrors.push(error.message);
       else counts.leads_upserted += part.length;
+    }
+
+    // Materialize SDR cold-call meetings (JustCall lane) into the `meetings`
+    // table so they count on the Outbound dashboard. Only the 'other' lane with a
+    // booker; inbound leads are left to the inbound/deal path. Best-effort.
+    counts.meetings_materialized = 0;
+    for (const r of rows) {
+      if (r.source_channel !== "other") continue;
+      if (!(r.raw && r.raw.Meeting_Booked_By && r.raw.Meeting_Booked_By.id != null)) continue;
+      const res = await ensureMeetingForBookedLead(supabase, r);
+      if (res.created) counts.meetings_materialized++;
+      if (res.error) rowErrors.push(`meeting ${r.zoho_lead_id}: ${res.error}`);
     }
 
     const ok = rowErrors.length === 0;
