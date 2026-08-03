@@ -2,6 +2,7 @@ import { getServiceClient } from "../../../../lib/supabase";
 import { normalizeDomain, domainFromEmail } from "../../../../lib/ingest";
 import { getZohoAccessToken, zohoSearchAll, zohoListAll, resolveDealDomain } from "../../../../lib/zoho";
 import { classifyStage, accountTouchedBefore, writeDealPreservingOutbound, loadNewBusinessOwners, dealOwner, ensureMeetingForDeal, buildDealWritePatch, DEAL_WRITE_SELECT } from "../../../../lib/zohoDeals";
+import { ensureMeetingForBookedLead } from "../../../../lib/zohoLeads";
 import { writeHeartbeat } from "../../../../lib/health";
 
 // GET /api/sync/zoho
@@ -318,6 +319,8 @@ export async function GET(request) {
     }
     counts.meetings_seen = leads.length;
 
+    const seenMeetings = new Set(); // domain+quarter guard for this pass
+
     for (const lead of leads) {
       try {
         const company = zohoName(lead.Company);
@@ -363,31 +366,25 @@ export async function GET(request) {
           (account ? await lastMeaningfulChannel(supabase, account.id) : null);
 
         if (domain && account && channel) {
-          // Outbound attribution from OUR data: did this account receive any
-          // touch (any kind/channel) in the 90 days BEFORE booked_at? If so the
-          // meeting is outbound-attributed. If booked_at is null/unparseable we
-          // can't window it, so fall back to "any touch ever for this account".
-          const isOutbound = await accountTouchedBefore(supabase, account.id, bookedAt);
-
-          const meeting = {
-            account_id: account.id,
-            domain,
-            booked_at: bookedAt,
-            performed_at: lead.Meeting_Performed_Date ?? null,
-            meeting_status: lead.Meeting_Status ?? null,
-            held: lead.Meeting_Status === "Performed",
-            is_outbound: isOutbound,
-            source_tool: "zoho",
-            external_id: asExternalId(lead.id),
-            channel,
-            raw: rawWithOwner,
-          };
-
-          const { error } = await supabase
-            .from("meetings")
-            .upsert(meeting, { onConflict: "source_tool,external_id" });
-          if (error) throw error;
-          counts.meetings_matched++;
+          // Route lead->meeting creation through the SINGLE materializer
+          // (external_id 'lead-meeting:<id>', domain+quarter guarded). The old
+          // plain-id insert here created a second row with a different key that
+          // idempotency never matched — retired.
+          const res = await ensureMeetingForBookedLead(
+            supabase,
+            {
+              zoho_lead_id: String(lead.id),
+              domain,
+              lead_status: "Meeting Booked",
+              owner_id: owner.id,
+              owner_name: ownerName,
+              created_at: bookedAt,
+              raw: rawWithOwner,
+            },
+            seenMeetings
+          );
+          if (res.error) rowErrors.push(`meeting ${lead.id}: ${res.error}`);
+          else if (res.created || res.updated) counts.meetings_matched++;
         } else if (domain && account && !channel) {
           // Matched to an account but no channel is derivable -> queue instead of
           // inserting a null channel. A human can set the channel on resolve.
@@ -542,9 +539,4 @@ async function finishRun(supabase, runId, fields) {
   if (!runId) return;
   const { error } = await supabase.from("zoho_sync_runs").update(fields).eq("id", runId);
   if (error) console.error("zoho_sync_runs update failed:", error.message);
-}
-
-// External_id for a meeting is the Zoho Lead id; coerce to string and guard null.
-function asExternalId(id) {
-  return id != null ? String(id) : null;
 }

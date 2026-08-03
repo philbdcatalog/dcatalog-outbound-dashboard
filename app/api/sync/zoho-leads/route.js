@@ -96,9 +96,10 @@ export async function GET(request) {
     // pass, so New->Meeting Booked transitions get a row). Source is derived from
     // Lead_Source: Just Call -> outbound phone; else inbound. Best-effort.
     counts.meetings_materialized = 0;
+    const seenMeetings = new Set(); // domain+quarter guard for this pass
     for (const r of rows) {
       if (r.lead_status !== "Meeting Booked") continue;
-      const res = await ensureMeetingForBookedLead(supabase, r);
+      const res = await ensureMeetingForBookedLead(supabase, r, seenMeetings);
       if (res.created) counts.meetings_materialized++;
       if (res.error) rowErrors.push(`meeting ${r.zoho_lead_id}: ${res.error}`);
     }
