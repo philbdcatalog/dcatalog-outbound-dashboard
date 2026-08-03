@@ -72,6 +72,12 @@ function prefillFromLeadSource(ls, kind) {
   if (hit) return hit;
   return kind !== "deal" ? { source: "inbound", channel: "other" } : null;
 }
+// The suggested pre-fill for a row: the server-computed `suggested` (deals — from
+// the outbound-touch / originating-lead inference) when present, else the
+// client-side Lead_Source mapping (meetings).
+function rowPrefill(r) {
+  return r.suggested || prefillFromLeadSource(r.lead_source, r.kind);
+}
 // Human-readable target for the soft "differs from Zoho" warning.
 function prefillLabel(p) {
   if (!p) return null;
@@ -104,21 +110,28 @@ export default function QueueClient({ initialRows, C }) {
   const [sources, setSources] = useState(() =>
     Object.fromEntries(
       (initialRows || [])
-        .map((r) => [r.id, prefillFromLeadSource(r.lead_source, r.kind)?.source])
+        .map((r) => [r.id, rowPrefill(r)?.source])
         .filter(([, v]) => v)
     )
   );
   // Per-row OUTBOUND tool pick (value is the tool, channel derived from
   // TOOL_TO_CHANNEL) + its own validation message. Required for outbound.
-  const [picks, setPicks] = useState({});
+  // Pre-filled from the suggested tool (deal outbound inference) when present.
+  const [picks, setPicks] = useState(() =>
+    Object.fromEntries(
+      (initialRows || [])
+        .map((r) => { const p = rowPrefill(r); return [r.id, p && p.source === "outbound" && p.tool ? p.tool : undefined]; })
+        .filter(([, v]) => v)
+    )
+  );
   const [chanErrors, setChanErrors] = useState({});
   // Per-row INBOUND source_channel pick; defaults to "unknown" at submit time.
-  // Pre-filled from a clean inbound Lead_Source mapping.
+  // Pre-filled from a clean inbound mapping.
   const [inboundChans, setInboundChans] = useState(() =>
     Object.fromEntries(
       (initialRows || [])
         .map((r) => {
-          const p = prefillFromLeadSource(r.lead_source, r.kind);
+          const p = rowPrefill(r);
           return [r.id, p && p.source === "inbound" ? p.channel : undefined];
         })
         .filter(([, v]) => v)
@@ -286,7 +299,7 @@ export default function QueueClient({ initialRows, C }) {
                     });
                     // Soft warning (not a block): the rep's current pick differs
                     // from the clean Zoho Lead_Source mapping.
-                    const mapping = prefillFromLeadSource(r.lead_source, r.kind);
+                    const mapping = rowPrefill(r);
                     const conflict =
                       mapping &&
                       (src !== mapping.source ||
