@@ -54,16 +54,23 @@ const LEAD_SOURCE_PREFILL = {
   "google catalog": { source: "inbound", channel: "google_ads" },
   "facebook": { source: "inbound", channel: "facebook_ads" },
   "facebook ads": { source: "inbound", channel: "facebook_ads" },
+  "fb": { source: "inbound", channel: "facebook_ads" },
   "linkedin": { source: "inbound", channel: "linkedin" },
   "trade show": { source: "inbound", channel: "trade_show" },
   "event": { source: "inbound", channel: "trade_show" },
+  "calendly": { source: "inbound", channel: "other" }, // self-booking -> inbound
+  "just call": { source: "outbound" }, // SDR cold-call lane
   "seamless.ai": { source: "outbound" }, // prospecting tool -> leave tool for the rep
   "zoominfo": { source: "outbound" },
   "apollo": { source: "outbound" },
 };
-function prefillFromLeadSource(ls) {
-  if (!ls) return null;
-  return LEAD_SOURCE_PREFILL[String(ls).trim().toLowerCase()] || null;
+// For MEETING rows, default unrecognized/blank Lead_Source to inbound/other (a
+// booked meeting is inbound unless a mapping says otherwise) so the queue stops
+// defaulting inbound self-bookings to Outbound. Deals keep "no pre-fill" (null).
+function prefillFromLeadSource(ls, kind) {
+  const hit = ls ? LEAD_SOURCE_PREFILL[String(ls).trim().toLowerCase()] : null;
+  if (hit) return hit;
+  return kind !== "deal" ? { source: "inbound", channel: "other" } : null;
 }
 // Human-readable target for the soft "differs from Zoho" warning.
 function prefillLabel(p) {
@@ -97,7 +104,7 @@ export default function QueueClient({ initialRows, C }) {
   const [sources, setSources] = useState(() =>
     Object.fromEntries(
       (initialRows || [])
-        .map((r) => [r.id, prefillFromLeadSource(r.lead_source)?.source])
+        .map((r) => [r.id, prefillFromLeadSource(r.lead_source, r.kind)?.source])
         .filter(([, v]) => v)
     )
   );
@@ -111,7 +118,7 @@ export default function QueueClient({ initialRows, C }) {
     Object.fromEntries(
       (initialRows || [])
         .map((r) => {
-          const p = prefillFromLeadSource(r.lead_source);
+          const p = prefillFromLeadSource(r.lead_source, r.kind);
           return [r.id, p && p.source === "inbound" ? p.channel : undefined];
         })
         .filter(([, v]) => v)
@@ -279,7 +286,7 @@ export default function QueueClient({ initialRows, C }) {
                     });
                     // Soft warning (not a block): the rep's current pick differs
                     // from the clean Zoho Lead_Source mapping.
-                    const mapping = prefillFromLeadSource(r.lead_source);
+                    const mapping = prefillFromLeadSource(r.lead_source, r.kind);
                     const conflict =
                       mapping &&
                       (src !== mapping.source ||

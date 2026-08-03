@@ -92,13 +92,12 @@ export async function GET(request) {
       else counts.leads_upserted += part.length;
     }
 
-    // Materialize SDR cold-call meetings (JustCall lane) into the `meetings`
-    // table so they count on the Outbound dashboard. Only the 'other' lane with a
-    // booker; inbound leads are left to the inbound/deal path. Best-effort.
+    // Materialize a `meetings` row for every "Meeting Booked" lead (runs each
+    // pass, so New->Meeting Booked transitions get a row). Source is derived from
+    // Lead_Source: Just Call -> outbound phone; else inbound. Best-effort.
     counts.meetings_materialized = 0;
     for (const r of rows) {
-      if (r.source_channel !== "other") continue;
-      if (!(r.raw && r.raw.Meeting_Booked_By && r.raw.Meeting_Booked_By.id != null)) continue;
+      if (r.lead_status !== "Meeting Booked") continue;
       const res = await ensureMeetingForBookedLead(supabase, r);
       if (res.created) counts.meetings_materialized++;
       if (res.error) rowErrors.push(`meeting ${r.zoho_lead_id}: ${res.error}`);
