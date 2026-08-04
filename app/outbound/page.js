@@ -3,7 +3,10 @@ import { TripleBars, MetricByToolCards } from "../dashboard/charts";
 import { C, card, eyebrow, SHADOW } from "../../lib/theme";
 import { resolvePeriod, periodOptions } from "../../lib/quarter";
 import PeriodSelector from "../PeriodSelector";
+import { DeltaChip } from "../DeltaChip";
 import Nav from "../Nav";
+
+const usdK = (n) => "$" + Math.round((n ?? 0) / 1000) + "K";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
@@ -57,7 +60,7 @@ function RepAvatar({ name }) {
 }
 
 // Speedometer gauge — 3 muted zones (clay / amber / sage), thin arc + needle.
-function Gauge({ label, value, goal, display }) {
+function Gauge({ label, value, goal, display, delta, fmtAbs }) {
   const frac = goal > 0 ? Math.min(1, value / goal) : 0;
   const r = 72, cx = 90, cy = 92;
   const pt = (f, rad) => {
@@ -71,7 +74,10 @@ function Gauge({ label, value, goal, display }) {
   const [nx, ny] = pt(frac, r - 14);
   return (
     <div style={{ ...card, textAlign: "center" }}>
-      <div style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginBottom: 8 }}>{label}</div>
+      <div style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 7 }}>
+        {label}
+        <DeltaChip delta={delta} C={C} fmtAbs={fmtAbs} />
+      </div>
       <svg viewBox="0 0 180 124" width="100%" style={{ maxWidth: 220 }}>
         <path d={arc(0, 0.42)} fill="none" stroke="#e0796b" strokeWidth={8} strokeLinecap="round" />
         <path d={arc(0.42, 0.62)} fill="none" stroke="#e8b04b" strokeWidth={8} />
@@ -129,10 +135,10 @@ export default async function OutboundDashboard({ searchParams }) {
 
       <div style={seclabel}>Output <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{period.label}</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
-        <Gauge label="Meetings Booked" value={d.meetingsThisQuarter} goal={d.goals.meetings} display={fmt(d.meetingsThisQuarter)} />
-        <Gauge label="Opportunities Created" value={d.oppsThisQuarter} goal={d.goals.opps} display={fmt(d.oppsThisQuarter)} />
-        <Gauge label="Pipeline Generated" value={d.pipelineGenerated} goal={d.goals.pipeline} display={"$" + Math.round(d.pipelineGenerated / 1000) + "K"} />
-        <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.won} display={"$" + Math.round(d.outboundWon / 1000) + "K"} />
+        <Gauge label="Meetings Booked" value={d.meetingsThisQuarter} goal={d.goals.meetings} display={fmt(d.meetingsThisQuarter)} delta={d.deltas?.meetings} />
+        <Gauge label="Opportunities Created" value={d.oppsThisQuarter} goal={d.goals.opps} display={fmt(d.oppsThisQuarter)} delta={d.deltas?.opps} />
+        <Gauge label="Pipeline Generated" value={d.pipelineGenerated} goal={d.goals.pipeline} display={"$" + Math.round(d.pipelineGenerated / 1000) + "K"} delta={d.deltas?.pipeline} fmtAbs={usdK} />
+        <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.won} display={"$" + Math.round(d.outboundWon / 1000) + "K"} delta={d.deltas?.won} fmtAbs={usdK} />
       </div>
 
       <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies · {period.label}</span></div>

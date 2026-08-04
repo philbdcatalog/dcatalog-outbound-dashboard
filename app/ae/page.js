@@ -4,6 +4,7 @@ import { resolvePeriod, periodOptions } from "../../lib/quarter";
 import { repPhotoPath } from "../../lib/roster";
 import PeriodSelector from "../PeriodSelector";
 import RepSelector from "../RepSelector";
+import { DeltaChip } from "../DeltaChip";
 import Nav from "../Nav";
 
 export const dynamic = "force-dynamic";
@@ -165,6 +166,7 @@ export default async function AEDashboard({ searchParams }) {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
               <RepAvatar name={r.rep} />
               <span style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{r.rep}</span>
+              <DeltaChip delta={r.quotaDelta} C={C} fmtAbs={usdK} />
             </div>
             <Gauge value={r.quotaValue} goal={r.quotaGoal} display={usdK(r.quotaValue)} />
             <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
