@@ -9,6 +9,7 @@ export const fetchCache = "force-no-store";
 const FIELDS = [
   "meeting_goal", "opps_goal", "pipeline_goal", "won_goal",
   "nb_meeting_goal", "nb_opp_goal", "nb_won_goal",
+  "nb_pipeline_goal_30", "nb_pipeline_goal_60", "nb_pipeline_goal_90",
   "inbound_meeting_goal", "inbound_pipeline_goal", "inbound_won_goal",
   "cost_email", "cost_linkedin", "cost_phone", "cost_multichannel",
 ];

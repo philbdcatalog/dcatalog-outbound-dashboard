@@ -14,6 +14,11 @@ const NB_GOAL_FIELDS = [
   { key: "nb_opp_goal", label: "Opps Goal", prefix: "" },
   { key: "nb_won_goal", label: "New Business Won Goal", prefix: "$" },
 ];
+const NB_PIPELINE_GOAL_FIELDS = [
+  { key: "nb_pipeline_goal_30", label: "30-Day Pipeline Goal", prefix: "$" },
+  { key: "nb_pipeline_goal_60", label: "60-Day Pipeline Goal", prefix: "$" },
+  { key: "nb_pipeline_goal_90", label: "90-Day Pipeline Goal", prefix: "$" },
+];
 const INBOUND_GOAL_FIELDS = [
   { key: "inbound_meeting_goal", label: "Inbound Meeting Goal", prefix: "" },
   { key: "inbound_pipeline_goal", label: "Inbound Pipeline Goal", prefix: "$" },
@@ -28,7 +33,7 @@ const COST_FIELDS = [
 
 export default function GoalsForm({ initial }) {
   const start = {};
-  for (const f of [...GOAL_FIELDS, ...NB_GOAL_FIELDS, ...INBOUND_GOAL_FIELDS, ...COST_FIELDS]) {
+  for (const f of [...GOAL_FIELDS, ...NB_GOAL_FIELDS, ...NB_PIPELINE_GOAL_FIELDS, ...INBOUND_GOAL_FIELDS, ...COST_FIELDS]) {
     const v = initial?.[f.key];
     start[f.key] = v == null ? "" : String(v);
   }
@@ -100,6 +105,14 @@ export default function GoalsForm({ initial }) {
         <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 14 }}>Targets for the New Business dashboard gauges.</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
           {NB_GOAL_FIELDS.map(numberField)}
+        </div>
+      </div>
+
+      <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted, margin: "22px 2px 10px" }}>New Business Pipeline Goals (30/60/90)</div>
+      <div style={card}>
+        <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 14 }}>Team-level pipeline-generation targets for the New Business 30/60/90 block.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+          {NB_PIPELINE_GOAL_FIELDS.map(numberField)}
         </div>
       </div>
 
