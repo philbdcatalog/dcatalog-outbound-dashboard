@@ -335,10 +335,11 @@ export default async function NewBusinessPage({ searchParams }) {
             <th style={{ ...th, textAlign: "right" }}>Close %</th>
             <th style={th}>Source</th>
             <th style={{ ...th, textAlign: "right" }}>Amount</th>
+            <th style={{ ...th, textAlign: "right" }}>Expected Amount</th>
           </tr></thead>
           <tbody>
             {m.sales.openDeals.length === 0 ? (
-              <tr><td style={{ ...td, color: C.muted }} colSpan={7}>No open deals.</td></tr>
+              <tr><td style={{ ...td, color: C.muted }} colSpan={8}>No open deals.</td></tr>
             ) : (
               m.sales.openDeals.map((d, i) => (
                 <tr key={i}>
@@ -349,6 +350,7 @@ export default async function NewBusinessPage({ searchParams }) {
                   <td style={numTd}>{d.closePct == null ? "—" : `${Math.round(Number(d.closePct))}%`}</td>
                   <td style={{ ...td, color: C.inkSoft }}>{d.source}</td>
                   <td style={numTd}>{usd(d.amount)}</td>
+                  <td style={numTd}>{usd(d.expectedAmount)}</td>
                 </tr>
               ))
             )}
@@ -356,25 +358,26 @@ export default async function NewBusinessPage({ searchParams }) {
           <tfoot><tr>
             <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }} colSpan={6}>Total open pipeline</td>
             <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{usd(m.sales.openTotal)}</td>
+            <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{usd(m.sales.openExpectedTotal)}</td>
           </tr></tfoot>
         </table>
       </div>
 
-      {/* 30/60/90 — anchored to today, NOT the period selector */}
-      <div style={{ ...seclabel, marginTop: 14 }}>30 / 60 / 90 <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>from today · independent of the period selector</span></div>
+      {/* Month-of-quarter blocks — anchored to the current quarter, NOT the period selector */}
+      <div style={{ ...seclabel, marginTop: 14 }}>By Month of Quarter <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>current quarter · independent of the period selector</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
         <div style={panel}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Expected Revenue</div>
           <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>weighted (amount × close %) · by expected close date</div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead><tr>
-              <th style={th}>Window</th>
+              <th style={th}>Month</th>
               <th style={{ ...th, textAlign: "right" }}>Expected Revenue</th>
             </tr></thead>
             <tbody>
               {m.plan306090.expectedRevenue.map((r) => (
-                <tr key={r.window}>
-                  <td style={{ ...td, fontWeight: 500 }}>Next {r.window} days</td>
+                <tr key={r.label}>
+                  <td style={{ ...td, fontWeight: 500 }}>{r.label}</td>
                   <td style={{ ...numTd, fontWeight: 700 }}>{usd(r.value)}</td>
                 </tr>
               ))}
@@ -385,22 +388,27 @@ export default async function NewBusinessPage({ searchParams }) {
               Unscheduled: {fmt(m.plan306090.unscheduled.count)} open deal{m.plan306090.unscheduled.count === 1 ? "" : "s"} · {usd(m.plan306090.unscheduled.amount)} (no expected close date)
             </div>
           )}
+          {m.plan306090.beyondQuarter.count > 0 && (
+            <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>
+              Beyond quarter: {fmt(m.plan306090.beyondQuarter.count)} open deal{m.plan306090.beyondQuarter.count === 1 ? "" : "s"} · {usd(m.plan306090.beyondQuarter.amount)} (close date outside this quarter)
+            </div>
+          )}
         </div>
 
         <div style={panel}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 4 }}>Pipeline Goals</div>
-          <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>unweighted pipeline generated · by opp date</div>
+          <div style={{ fontSize: 11, color: C.muted, marginBottom: 10 }}>unweighted pipeline added · by opp date</div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead><tr>
-              <th style={th}>Window</th>
+              <th style={th}>Month</th>
               <th style={{ ...th, textAlign: "right" }}>Goal</th>
-              <th style={{ ...th, textAlign: "right" }}>Actual</th>
+              <th style={{ ...th, textAlign: "right" }}>Actual Added</th>
               <th style={{ ...th, textAlign: "right" }}>% of Goal</th>
             </tr></thead>
             <tbody>
               {m.plan306090.pipelineGoals.map((r) => (
-                <tr key={r.window}>
-                  <td style={{ ...td, fontWeight: 500 }}>Last {r.window} days</td>
+                <tr key={r.label}>
+                  <td style={{ ...td, fontWeight: 500 }}>{r.label}</td>
                   <td style={numTd}>{r.goal > 0 ? usd(r.goal) : "—"}</td>
                   <td style={{ ...numTd, fontWeight: 700 }}>{usd(r.actual)}</td>
                   <td style={{ ...numTd, color: C.inkSoft }}>{r.pct == null ? "Set a target" : `${r.pct}%`}</td>

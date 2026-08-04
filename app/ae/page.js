@@ -260,10 +260,11 @@ export default async function AEDashboard({ searchParams }) {
             <th style={{ ...th, textAlign: "right" }}>Close %</th>
             <th style={th}>Source</th>
             <th style={{ ...th, textAlign: "right" }}>Amount</th>
+            <th style={{ ...th, textAlign: "right" }}>Expected Amount</th>
           </tr></thead>
           <tbody>
             {m.openDeals.length === 0 ? (
-              <tr><td style={{ ...td, color: C.muted }} colSpan={rep === "all" ? 7 : 6}>No open deals.</td></tr>
+              <tr><td style={{ ...td, color: C.muted }} colSpan={rep === "all" ? 8 : 7}>No open deals.</td></tr>
             ) : (
               m.openDeals.map((d, i) => (
                 <tr key={i}>
@@ -274,6 +275,7 @@ export default async function AEDashboard({ searchParams }) {
                   <td style={numTd}>{d.closePct == null ? "—" : `${Math.round(Number(d.closePct))}%`}</td>
                   <td style={{ ...td, color: C.inkSoft }}>{d.source}</td>
                   <td style={numTd}>{usd(d.amount)}</td>
+                  <td style={numTd}>{usd(d.expectedAmount)}</td>
                 </tr>
               ))
             )}
@@ -281,6 +283,7 @@ export default async function AEDashboard({ searchParams }) {
           <tfoot><tr>
             <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }} colSpan={rep === "all" ? 6 : 5}>Total open pipeline</td>
             <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{usd(m.openDeals.reduce((s, d) => s + d.amount, 0))}</td>
+            <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{usd(m.openDeals.reduce((s, d) => s + d.expectedAmount, 0))}</td>
           </tr></tfoot>
         </table>
       </div>

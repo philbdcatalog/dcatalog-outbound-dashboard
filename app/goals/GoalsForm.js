@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { C, card, SHADOW } from "../../lib/theme";
+import { currentQuarter } from "../../lib/quarter";
 
 const GOAL_FIELDS = [
   { key: "meeting_goal", label: "Meeting Goal", prefix: "" },
@@ -14,10 +15,14 @@ const NB_GOAL_FIELDS = [
   { key: "nb_opp_goal", label: "Opps Goal", prefix: "" },
   { key: "nb_won_goal", label: "New Business Won Goal", prefix: "$" },
 ];
+// Month-of-quarter pipeline goals — labels are the live month names (Jul/Aug/Sep
+// in Q3), matching the New Business chart; keys are m1/m2/m3 of the quarter.
+const qStart = currentQuarter(new Date()).start;
+const qMonthName = (i) => new Date(Date.UTC(qStart.getUTCFullYear(), qStart.getUTCMonth() + i, 1)).toLocaleString("en-US", { month: "short", timeZone: "UTC" });
 const NB_PIPELINE_GOAL_FIELDS = [
-  { key: "nb_pipeline_goal_30", label: "30-Day Pipeline Goal", prefix: "$" },
-  { key: "nb_pipeline_goal_60", label: "60-Day Pipeline Goal", prefix: "$" },
-  { key: "nb_pipeline_goal_90", label: "90-Day Pipeline Goal", prefix: "$" },
+  { key: "nb_pipeline_goal_m1", label: `${qMonthName(0)} Pipeline Goal`, prefix: "$" },
+  { key: "nb_pipeline_goal_m2", label: `${qMonthName(1)} Pipeline Goal`, prefix: "$" },
+  { key: "nb_pipeline_goal_m3", label: `${qMonthName(2)} Pipeline Goal`, prefix: "$" },
 ];
 const INBOUND_GOAL_FIELDS = [
   { key: "inbound_meeting_goal", label: "Inbound Meeting Goal", prefix: "" },
@@ -108,9 +113,9 @@ export default function GoalsForm({ initial }) {
         </div>
       </div>
 
-      <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted, margin: "22px 2px 10px" }}>New Business Pipeline Goals (30/60/90)</div>
+      <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.4, color: C.muted, margin: "22px 2px 10px" }}>New Business Pipeline Goals (by month of quarter)</div>
       <div style={card}>
-        <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 14 }}>Team-level pipeline-generation targets for the New Business 30/60/90 block.</div>
+        <div style={{ fontSize: 12.5, color: C.muted, marginBottom: 14 }}>Team-level pipeline-generation targets per month of the current quarter (New Business block).</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
           {NB_PIPELINE_GOAL_FIELDS.map(numberField)}
         </div>
