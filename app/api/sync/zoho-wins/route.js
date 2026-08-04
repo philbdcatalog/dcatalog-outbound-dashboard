@@ -89,7 +89,7 @@ export async function GET(request) {
       accessToken,
       module: "Deals",
       criteria: `((Stage:equals:Closed Won)and(Closing_Date:greater_equal:${qStartStr}))`,
-      fields: "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name,Owner",
+      fields: "Deal_Name,Amount,Closing_Date,Probability,Created_Time,Website,Account_Name,Stage,Contact_Name,Owner",
     });
     counts.deals_seen = deals.length;
 

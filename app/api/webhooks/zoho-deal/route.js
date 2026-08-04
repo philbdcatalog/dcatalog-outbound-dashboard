@@ -101,6 +101,9 @@ function parseDealPayload(raw) {
   // Rebuild Owner in the { id, name } shape dealOwner() understands (Zoho sends
   // the name in Owner and the id separately in Owner_id on form fires).
   if (ownerId || ownerName) deal.Owner = { id: ownerId || null, name: ownerName || null };
+  // Probability only when the workflow actually sends it — add the key
+  // conditionally so its absence never nulls an existing deals.probability.
+  if (params.has("Probability")) deal.Probability = params.get("Probability");
   return deal;
 }
 

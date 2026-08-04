@@ -106,7 +106,7 @@ export async function GET(request) {
     //   - otherwise -> recon queue tagged deal_stage (open opps -> Opps lane).
     // Quarter scoping is a VIEW concern. Every request is time-bounded.
     // ----------------------------------------------------------------------
-    const DEAL_FIELDS = "Deal_Name,Amount,Closing_Date,Created_Time,Website,Account_Name,Stage,Contact_Name,Owner";
+    const DEAL_FIELDS = "Deal_Name,Amount,Closing_Date,Probability,Created_Time,Website,Account_Name,Stage,Contact_Name,Owner";
 
     // New-business owner roster (configurable in app_settings).
     let rosterIds = new Set();
