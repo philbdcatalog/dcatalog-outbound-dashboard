@@ -15,6 +15,7 @@ const fmt = (n) => (n ?? 0).toLocaleString();
 const usd = (n) => "$" + Math.round(n ?? 0).toLocaleString();
 const usdK = (n) => "$" + Math.round((n ?? 0) / 1000) + "K";
 const pctOf = (a, b) => (b > 0 ? Math.round((a / b) * 100) + "%" : "–");
+const fmtDate = (s) => (s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : "—");
 
 const SRC_LABEL = {
   inbound: "Inbound", "outbound-email": "Outbound Email", "outbound-linkedin": "Outbound LinkedIn",
@@ -255,24 +256,30 @@ export default async function AEDashboard({ searchParams }) {
             <th style={th}>Company</th>
             {rep === "all" && <th style={th}>Rep</th>}
             <th style={th}>Stage</th>
+            <th style={th}>Expected Close</th>
+            <th style={{ ...th, textAlign: "right" }}>Close %</th>
+            <th style={th}>Source</th>
             <th style={{ ...th, textAlign: "right" }}>Amount</th>
           </tr></thead>
           <tbody>
             {m.openDeals.length === 0 ? (
-              <tr><td style={{ ...td, color: C.muted }} colSpan={rep === "all" ? 4 : 3}>No open deals.</td></tr>
+              <tr><td style={{ ...td, color: C.muted }} colSpan={rep === "all" ? 7 : 6}>No open deals.</td></tr>
             ) : (
               m.openDeals.map((d, i) => (
                 <tr key={i}>
                   <td style={{ ...td, fontWeight: 500 }}>{d.company}</td>
                   {rep === "all" && <td style={{ ...td, color: C.inkSoft }}>{d.rep}</td>}
                   <td style={{ ...td, color: C.inkSoft }}>{d.stage}</td>
+                  <td style={{ ...td, color: C.inkSoft }}>{d.expectedClose ? fmtDate(d.expectedClose) : "—"}</td>
+                  <td style={numTd}>{d.closePct == null ? "—" : `${Math.round(Number(d.closePct))}%`}</td>
+                  <td style={{ ...td, color: C.inkSoft }}>{d.source}</td>
                   <td style={numTd}>{usd(d.amount)}</td>
                 </tr>
               ))
             )}
           </tbody>
           <tfoot><tr>
-            <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }} colSpan={rep === "all" ? 3 : 2}>Total open pipeline</td>
+            <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }} colSpan={rep === "all" ? 6 : 5}>Total open pipeline</td>
             <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{usd(m.openDeals.reduce((s, d) => s + d.amount, 0))}</td>
           </tr></tfoot>
         </table>

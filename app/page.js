@@ -331,24 +331,30 @@ export default async function NewBusinessPage({ searchParams }) {
             <th style={th}>Company</th>
             <th style={th}>Rep</th>
             <th style={th}>Stage</th>
+            <th style={th}>Expected Close</th>
+            <th style={{ ...th, textAlign: "right" }}>Close %</th>
+            <th style={th}>Source</th>
             <th style={{ ...th, textAlign: "right" }}>Amount</th>
           </tr></thead>
           <tbody>
             {m.sales.openDeals.length === 0 ? (
-              <tr><td style={{ ...td, color: C.muted }} colSpan={4}>No open deals.</td></tr>
+              <tr><td style={{ ...td, color: C.muted }} colSpan={7}>No open deals.</td></tr>
             ) : (
               m.sales.openDeals.map((d, i) => (
                 <tr key={i}>
                   <td style={{ ...td, fontWeight: 500 }}>{d.company}</td>
                   <td style={{ ...td, color: C.inkSoft }}>{d.rep}</td>
                   <td style={{ ...td, color: C.inkSoft }}>{d.stage}</td>
+                  <td style={{ ...td, color: C.inkSoft }}>{d.expectedClose ? fmtDate(d.expectedClose) : "—"}</td>
+                  <td style={numTd}>{d.closePct == null ? "—" : `${Math.round(Number(d.closePct))}%`}</td>
+                  <td style={{ ...td, color: C.inkSoft }}>{d.source}</td>
                   <td style={numTd}>{usd(d.amount)}</td>
                 </tr>
               ))
             )}
           </tbody>
           <tfoot><tr>
-            <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }} colSpan={3}>Total open pipeline</td>
+            <td style={{ ...td, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }} colSpan={6}>Total open pipeline</td>
             <td style={{ ...numTd, fontWeight: 700, color: C.navy, borderTop: `2px solid ${C.line}` }}>{usd(m.sales.openTotal)}</td>
           </tr></tfoot>
         </table>
