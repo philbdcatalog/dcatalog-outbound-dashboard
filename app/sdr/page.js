@@ -217,9 +217,8 @@ export default async function SDRDashboard({ searchParams }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           {[
             { k: "Connect rate", v: m.team.connectRate == null ? "–" : `${Math.round(m.team.connectRate * 100)}%` },
-            { k: "Conversation time", v: mins(m.team.talkSec) },
-            { k: "Avg call duration", v: mmss(shown.reduce((s, r) => s + r.avgDurationSec, 0) / (shown.length || 1)) },
-            { k: "After-call work", v: mins(m.team.acwSec) },
+            { k: "Total call time", v: mins(m.team.talkSec) },
+            { k: "Avg call duration", v: mmss(m.team.avgConvSec) },
             { k: "Voicemails dropped", v: fmt(m.team.vmDropped) },
             { k: "Total dials", v: fmt(m.team.dials) },
           ].map((it) => (
