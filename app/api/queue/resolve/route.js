@@ -88,6 +88,10 @@ export async function POST(request) {
         ? (SOURCE_CHANNELS.includes(explicitChannel) ? explicitChannel : sourceChannelFromDealSource(rawSrc))
         : source === "other" ? "other" : null;
 
+    // Set true when a meeting graduation was skipped because the domain already
+    // has a meeting this quarter (no duplicate inserted). Surfaced in the response.
+    let meetingDeduped = false;
+
     if (row.kind === "deal") {
       // tool/channel picker (used for outbound; both nullable on deals).
       const VALID_CHANNELS = ["email", "linkedin", "phone", "multi-channel"];
@@ -169,23 +173,49 @@ export async function POST(request) {
         return Response.json({ ok: false, error: `invalid tool '${tool}'` }, { status: 400 });
       }
 
-      const meeting = {
-        account_id: account.id,
-        domain,
-        channel,
-        tool,
-        booked_at: row.occurred_at ?? null,
-        is_outbound: isOutbound,
-        source,
-        source_tool: "zoho",
-        external_id: row.zoho_id != null ? String(row.zoho_id) : null,
-        raw: row.raw,
-      };
-      if (sourceChannel) meeting.source_channel = sourceChannel;
-      const { error } = await supabase
-        .from("meetings")
-        .upsert(meeting, { onConflict: "source_tool,external_id" });
-      if (error) return Response.json({ ok: false, stage: "meeting", error: error.message }, { status: 500 });
+      // Idempotency (locked rule: one meeting per normalized domain per calendar
+      // quarter). A meeting-kind queue row's zoho_id is a Zoho LEAD id (see the
+      // sync's queueRecon calls), and the sync already materializes that lead as
+      // 'lead-meeting:<id>' via ensureMeetingForBookedLead. So graduating an
+      // already-materialized lead must NOT add a second row — check domain+quarter
+      // first and skip the insert if one exists (still tag the queue row below),
+      // and use the SAME canonical external_id, never the bare id.
+      const bookedAt = row.occurred_at ? new Date(row.occurred_at) : null;
+      const validDate = bookedAt && !isNaN(bookedAt.getTime());
+      if (validDate) {
+        const qIdx = Math.floor(bookedAt.getUTCMonth() / 3);
+        const qStart = new Date(Date.UTC(bookedAt.getUTCFullYear(), qIdx * 3, 1));
+        const qEnd = new Date(Date.UTC(bookedAt.getUTCFullYear(), qIdx * 3 + 3, 1));
+        const { data: dupe, error: dupeErr } = await supabase
+          .from("meetings").select("id").eq("domain", domain)
+          .gte("booked_at", qStart.toISOString()).lt("booked_at", qEnd.toISOString()).limit(1);
+        if (dupeErr) return Response.json({ ok: false, stage: "meeting-dedupe", error: dupeErr.message }, { status: 500 });
+        if (dupe && dupe.length) meetingDeduped = true;
+      }
+
+      if (!meetingDeduped) {
+        const meeting = {
+          account_id: account.id,
+          domain,
+          channel,
+          tool,
+          booked_at: row.occurred_at ?? null,
+          is_outbound: isOutbound,
+          source,
+          source_tool: "zoho",
+          // Canonical key shared with ensureMeetingForBookedLead — NEVER the bare id
+          // (the bare-id key never matched 'lead-meeting:<id>', so idempotency missed
+          // and a second row was inserted). onConflict update refreshes rather than
+          // duplicates; the domain+quarter guard above prevents cross-key dupes.
+          external_id: row.zoho_id != null ? `lead-meeting:${row.zoho_id}` : null,
+          raw: row.raw,
+        };
+        if (sourceChannel) meeting.source_channel = sourceChannel;
+        const { error } = await supabase
+          .from("meetings")
+          .upsert(meeting, { onConflict: "source_tool,external_id" });
+        if (error) return Response.json({ ok: false, stage: "meeting", error: error.message }, { status: 500 });
+      }
     } else {
       return Response.json({ ok: false, error: `unknown queue kind: ${row.kind}` }, { status: 400 });
     }
@@ -198,7 +228,7 @@ export async function POST(request) {
       return Response.json({ ok: false, stage: "resolve-update", error: updErr.message }, { status: 500 });
     }
 
-    return Response.json({ ok: true, status: "approved", source, kind: row.kind, domain });
+    return Response.json({ ok: true, status: "approved", source, kind: row.kind, domain, meetingDeduped });
   } catch (err) {
     return Response.json({ ok: false, stage: "init", error: err.message }, { status: 500 });
   }
