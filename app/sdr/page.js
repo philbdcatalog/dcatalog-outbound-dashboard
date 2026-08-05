@@ -1,8 +1,9 @@
 import { getSDRData } from "../../lib/sdr";
 import { C, card, eyebrow } from "../../lib/theme";
+import { resolvePeriod, periodOptions } from "../../lib/quarter";
 import { repPhotoPath } from "../../lib/roster";
 import RepSelector from "../RepSelector";
-import RangeToggle from "../RangeToggle";
+import PeriodSelector from "../PeriodSelector";
 import Nav from "../Nav";
 
 export const dynamic = "force-dynamic";
@@ -15,14 +16,6 @@ const usd = (n) => "$" + Math.round(n ?? 0).toLocaleString();
 const usdK = (n) => "$" + Math.round((n ?? 0) / 1000) + "K";
 const mins = (sec) => (sec ? `${Math.round(sec / 60)}m` : "0m");
 const mmss = (sec) => { const s = Math.round(sec || 0); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
-
-function Pending({ children }) {
-  return (
-    <span style={{ display: "inline-block", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.3, color: "#9a6a1c", background: "#fdf3df", border: "1px solid #f0dcae", borderRadius: 999, padding: "2px 9px" }}>
-      pending{children ? ` — ${children}` : ""}
-    </span>
-  );
-}
 
 function RepAvatar({ name, size = 34 }) {
   const base = { width: size, height: size, borderRadius: "50%", flexShrink: 0 };
@@ -83,19 +76,17 @@ function DialsByDay({ data, target, C }) {
 }
 
 export default async function SDRDashboard({ searchParams }) {
-  const range = searchParams?.range === "7d" ? "7d" : "mtd";
+  const period = resolvePeriod(searchParams?.period);
   const sdr = searchParams?.sdr || "all";
-  const m = await getSDRData(range, sdr);
+  const m = await getSDRData({ start: period.start, end: period.end }, sdr);
 
   const seclabel = eyebrow;
   const panel = card;
   const th = { textAlign: "left", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase", color: C.inkSoft, background: "#f4f6f9", padding: "10px 12px", borderBottom: `1px solid ${C.line}` };
   const td = { padding: "10px 12px", borderBottom: `1px solid ${C.line}`, fontSize: 13, color: C.ink };
   const numTd = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums" };
-  const pendTd = { ...numTd, color: "#9a6a1c" };
 
   const roster = m?.ok ? m.roster : [];
-  const rangeOptions = [{ value: "mtd", label: "July MTD" }, { value: "7d", label: "Last 7 days" }];
 
   if (!m?.ok) {
     return (
@@ -107,22 +98,21 @@ export default async function SDRDashboard({ searchParams }) {
     );
   }
 
-  const isMtd = m.range === "mtd";
   const shown = m.sdr === "all" ? m.perSdr : m.perSdr.filter((r) => r.sdr === m.sdr);
   const cols = Math.max(1, shown.length);
   const label = m.sdr === "all" ? "All SDRs" : m.sdr;
-  const rangeLabel = isMtd ? "July MTD" : "Last 7 days";
+  const periodLabel = period.label;
 
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: 24 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
         <div>
           <h1 style={{ fontSize: 27, fontWeight: 600, letterSpacing: -0.3, color: C.ink, margin: 0 }}>SDR Dashboard</h1>
-          <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>{label} · call lane · {rangeLabel}</div>
+          <div style={{ color: C.inkSoft, fontSize: 13.5, marginTop: 4 }}>{label} · call lane · {periodLabel}</div>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
-          <RangeToggle value={m.range} options={rangeOptions} />
           <RepSelector value={m.sdr} options={roster} param="sdr" label="SDR" allLabel="All SDRs" />
+          <PeriodSelector value={period.value} options={periodOptions()} subtitle="SDR · call lane" />
         </div>
       </div>
 
@@ -135,7 +125,7 @@ export default async function SDRDashboard({ searchParams }) {
       )}
 
       {/* SECTION 1 — THE NUMBER */}
-      <div style={seclabel}>The Number <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>qualified opps vs ramp quota · {rangeLabel}</span></div>
+      <div style={seclabel}>The Number <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>qualified opps vs ramp quota · {periodLabel}</span></div>
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols},1fr)`, gap: 14 }}>
         {shown.map((r) => (
           <div key={r.sdr} style={{ ...card, textAlign: "center" }}>
@@ -143,84 +133,67 @@ export default async function SDRDashboard({ searchParams }) {
               <RepAvatar name={r.sdr} />
               <span style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{r.sdr}</span>
             </div>
-            <Gauge
-              value={r.opps}
-              goal={r.quota}
-              display={fmt(r.opps)}
-              caption={isMtd ? (r.quota > 0 ? `Quota ${fmt(r.quota)} · pace ${r.pace.toFixed(1)}` : "Ramp quota 0") : `Pace ${r.pace} / wk`}
-            />
+            <Gauge value={r.opps} goal={r.quota} display={fmt(r.opps)} caption={r.quota > 0 ? `Quota ${fmt(r.quota)}` : "Ramp quota 0"} />
             <div style={{ fontSize: 11.5, color: C.muted, marginTop: 2 }}>qualified opps · SDR-booked accounts that reached opp stage</div>
           </div>
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: isMtd ? "1fr 1fr" : "1fr", gap: 14, marginTop: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
         <div style={card}>
           <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.2, color: C.muted }}>Pipeline Created</div>
           <div style={{ fontSize: 30, fontWeight: 700, color: C.navy, marginTop: 6 }}>{usd(m.team.pipeline)}</div>
           <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>
-            Y1 ACV on SDR-sourced opps · {isMtd ? "vs same day last month" : "vs prior 7 days"}{" "}
-            <span style={{ color: m.team.pipelineDelta >= 0 ? C.green : "#e0796b", fontWeight: 600 }}>
-              {m.team.pipelineDelta >= 0 ? "+" : "−"}{usd(Math.abs(m.team.pipelineDelta))}
-            </span>
+            Y1 ACV on SDR-sourced opps
+            {m.team.hasPrior && (
+              <> · vs prior period{" "}
+                <span style={{ color: m.team.pipelineDelta >= 0 ? C.green : "#e0796b", fontWeight: 600 }}>
+                  {m.team.pipelineDelta >= 0 ? "+" : "−"}{usd(Math.abs(m.team.pipelineDelta))}
+                </span>
+              </>
+            )}
           </div>
         </div>
 
-        {isMtd ? (
-          <div style={card}>
-            <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.2, color: C.muted }}>Team Pacing</div>
-            <div style={{ fontSize: 30, fontWeight: 700, color: C.navy, marginTop: 6 }}>{fmt(m.teamPacing?.cumulativeOpps || 0)} <span style={{ fontSize: 15, color: C.muted, fontWeight: 600 }}>/ {fmt(m.teamPacing?.quota || 0)} opps</span></div>
-            <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Cumulative team opps vs month-end quota · pace to today {(m.teamPacing?.paceToToday || 0).toFixed(1)}</div>
-          </div>
-        ) : null}
+        <div style={card}>
+          <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.2, color: C.muted }}>Team Opps vs Quota</div>
+          <div style={{ fontSize: 30, fontWeight: 700, color: C.navy, marginTop: 6 }}>{fmt(m.team.opps)} <span style={{ fontSize: 15, color: C.muted, fontWeight: 600 }}>/ {fmt(m.team.quota)} opps</span></div>
+          <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>cumulative ramp quota · {periodLabel}</div>
+        </div>
       </div>
 
-      {!isMtd && m.netNew && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14, marginTop: 14 }}>
-          {[["Qualified opps", fmt(m.netNew.opps)], ["Meetings held", fmt(m.netNew.held)], ["Meetings booked", fmt(m.netNew.booked)], ["Pipeline created", usd(m.netNew.pipeline)]].map(([k, v]) => (
-            <div key={k} style={card}>
-              <div style={{ textTransform: "uppercase", fontSize: 10.5, fontWeight: 600, letterSpacing: 1.2, color: C.muted }}>{k}</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: C.navy, marginTop: 6 }}>{v}</div>
-              <div style={{ fontSize: 11, color: C.muted, marginTop: 3 }}>net-new · last 7 days</div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* SECTION 2 — CONVERSION WATERFALL */}
-      <div style={seclabel}>Conversion Waterfall <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{label} · {rangeLabel}</span></div>
+      <div style={seclabel}>Conversion Waterfall <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{label} · {periodLabel}</span></div>
       <div style={panel}>
         {(() => {
           const t = m.team;
           const steps = [
-            { label: "Dials", val: t.dials, pending: false },
-            { label: "Live connects", val: t.connects, pending: m.connectsPending, unblock: "define connect dispositions" },
-            { label: "Meetings booked", val: t.booked, pending: false },
-            { label: "Meetings held", val: t.held, pending: false },
-            { label: "Qualified opps", val: t.opps, pending: false },
+            { label: "Dials", val: t.dials },
+            { label: "Live connects", val: t.connects },
+            { label: "Meetings booked", val: t.booked },
+            { label: "Meetings held", val: t.held },
+            { label: "Qualified opps", val: t.opps },
           ];
           const top = t.dials || Math.max(1, t.booked, t.held, t.opps);
           const ratioLabels = ["Connect rate", "Connect→booked", "Show rate", "Held→Opp"];
-          let prev = null, prevPending = false;
+          let prev = null;
           return (
             <div>
               {steps.map((s, i) => {
-                const isPend = s.pending || s.val == null;
-                const w = isPend ? 0 : Math.max(2, Math.min(100, (s.val / top) * 100));
-                // ratio from previous step
+                const w = Math.max(2, Math.min(100, top ? (s.val / top) * 100 : 0));
                 let ratio = null;
                 if (i > 0) {
                   const rl = ratioLabels[i - 1];
-                  if (prevPending || isPend || prev == null || prev === 0) ratio = <span style={{ color: C.muted }}>{rl}: –</span>;
-                  else ratio = <span style={{ color: C.inkSoft }}>{rl}: <strong>{Math.round((s.val / prev) * 100)}%</strong></span>;
+                  ratio = prev == null || prev === 0
+                    ? <span style={{ color: C.muted }}>{rl}: –</span>
+                    : <span style={{ color: C.inkSoft }}>{rl}: <strong>{Math.round((s.val / prev) * 100)}%</strong></span>;
                 }
-                prev = isPend ? prev : s.val;
-                prevPending = isPend;
+                prev = s.val;
                 return (
                   <div key={s.label} style={{ marginBottom: 10 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, marginBottom: 3 }}>
-                      <span style={{ color: C.ink, fontWeight: 500 }}>{s.label}{s.note ? <span style={{ color: C.muted, fontWeight: 400 }}> · {s.note}</span> : null}</span>
-                      <span>{isPend ? <Pending>{s.unblock}</Pending> : <strong style={{ color: C.ink }}>{fmt(s.val)}</strong>}</span>
+                      <span style={{ color: C.ink, fontWeight: 500 }}>{s.label}</span>
+                      <strong style={{ color: C.ink }}>{fmt(s.val)}</strong>
                     </div>
                     <div style={{ height: 14, background: C.line, borderRadius: 4, overflow: "hidden" }}>
                       <div style={{ width: `${w}%`, height: "100%", background: C.navy, borderRadius: 4 }} />
@@ -235,7 +208,7 @@ export default async function SDRDashboard({ searchParams }) {
       </div>
 
       {/* SECTION 3 — ACTIVITY DIAGNOSTICS */}
-      <div style={seclabel}>Activity Diagnostics <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>from JustCall · {rangeLabel}</span></div>
+      <div style={seclabel}>Activity Diagnostics <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>from JustCall · {periodLabel}</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14 }}>
         <div style={panel}>
           <div style={{ fontSize: 12, fontWeight: 700, color: C.navy, marginBottom: 10 }}>Dials / day vs {m.dialsTarget} target</div>
@@ -243,7 +216,7 @@ export default async function SDRDashboard({ searchParams }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           {[
-            { k: "Connect rate", v: m.connectsPending ? <Pending>connect dispositions</Pending> : `${Math.round((m.team.connectRate || 0) * 100)}%` },
+            { k: "Connect rate", v: m.team.connectRate == null ? "–" : `${Math.round(m.team.connectRate * 100)}%` },
             { k: "Conversation time", v: mins(m.team.talkSec) },
             { k: "Avg call duration", v: mmss(shown.reduce((s, r) => s + r.avgDurationSec, 0) / (shown.length || 1)) },
             { k: "After-call work", v: mins(m.team.acwSec) },
@@ -259,7 +232,7 @@ export default async function SDRDashboard({ searchParams }) {
       </div>
 
       {/* SECTION 4 — REP DETAIL (scoreboard) */}
-      <div style={seclabel}>Rep Detail <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>per-SDR scoreboard · {rangeLabel}</span></div>
+      <div style={seclabel}>Rep Detail <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>per-SDR scoreboard · {periodLabel}</span></div>
       <div style={panel}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr>
@@ -271,7 +244,7 @@ export default async function SDRDashboard({ searchParams }) {
             <th style={{ ...th, textAlign: "right" }}>Held</th>
             <th style={{ ...th, textAlign: "right" }}>Show%</th>
             <th style={{ ...th, textAlign: "right" }}>Opps</th>
-            <th style={{ ...th, textAlign: "right" }}>Pace</th>
+            <th style={{ ...th, textAlign: "right" }}>Quota</th>
             <th style={{ ...th, textAlign: "right" }}>Pipeline</th>
           </tr></thead>
           <tbody>
@@ -285,7 +258,7 @@ export default async function SDRDashboard({ searchParams }) {
                 <td style={numTd}>{fmt(r.held)}</td>
                 <td style={numTd}>{(r.showRate * 100).toFixed(0)}%</td>
                 <td style={numTd}>{fmt(r.opps)}</td>
-                <td style={numTd}>{isMtd ? r.pace.toFixed(1) : `${r.pace}/wk`}</td>
+                <td style={numTd}>{fmt(r.quota)}</td>
                 <td style={numTd}>{usd(r.pipeline)}</td>
               </tr>
             ))}
@@ -298,18 +271,18 @@ export default async function SDRDashboard({ searchParams }) {
               <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(m.team.held)}</td>
               <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{(m.team.showRate * 100).toFixed(0)}%</td>
               <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(m.team.opps)}</td>
-              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{isMtd ? m.team.pace.toFixed(1) : `${m.team.pace}/wk`}</td>
+              <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{fmt(m.team.quota)}</td>
               <td style={{ ...numTd, fontWeight: 700, borderTop: `2px solid ${C.line}` }}>{usd(m.team.pipeline)}</td>
             </tr>
           </tbody>
         </table>
         <div style={{ fontSize: 11, color: C.muted, marginTop: 10 }}>
-          Dials = outbound JustCall calls (Sales Dialer + phone). Connects are machine-classified by JustCall (call_info.type = Connected). Booked / Held / Qualified opps credit the SDR via Zoho <strong>Meeting_Booked_By</strong> (lead owner is routing only).
+          Dials = outbound JustCall calls (Sales Dialer + phone). Connects = calls with a real-conversation <strong>disposition</strong> (Interested, Info Sent, Callback Scheduled, Follow-Up Required, Needs More Time, Not Interested, Wrong Number, Do Not Call) — voicemails, no-answers and disconnects are excluded. Booked / Held / Qualified opps credit the SDR via Zoho <strong>Meeting_Booked_By</strong> (lead owner is routing only).
         </div>
       </div>
 
       {/* SDR MEETINGS SET */}
-      <div style={seclabel}>SDR Meetings Set <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{label} · {rangeLabel} · {m.meetingsSet.length} meetings</span></div>
+      <div style={seclabel}>SDR Meetings Set <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{label} · {periodLabel} · {m.meetingsSet.length} meetings</span></div>
       <div style={{ ...panel, overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead><tr>
