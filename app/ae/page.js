@@ -120,7 +120,15 @@ function SourceMix({ mix, C }) {
 export default async function AEDashboard({ searchParams }) {
   const period = resolvePeriod(searchParams?.period);
   const rep = searchParams?.rep || "all";
-  const m = await getAEData({ start: period.start, end: period.end }, rep);
+  // Guard the data load: getAEData is defensive, but a thrown rejection here would
+  // otherwise propagate as an uncaught server-render exception (the raw Next digest
+  // error page) instead of the friendly panel below.
+  let m;
+  try {
+    m = await getAEData({ start: period.start, end: period.end }, rep);
+  } catch (e) {
+    m = { ok: false, error: (e && e.message) || String(e) };
+  }
   const deltaBasis = deltaBasisText(period);
 
   const seclabel = eyebrow;
