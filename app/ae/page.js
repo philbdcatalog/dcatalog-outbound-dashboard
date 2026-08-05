@@ -177,7 +177,7 @@ export default async function AEDashboard({ searchParams }) {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
               <RepAvatar name={r.rep} />
               <span style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{r.rep}</span>
-              <DeltaInfo delta={r.quotaDelta} basis={deltaBasis} fmtVal={usdK} />
+              <DeltaInfo delta={r.quotaDelta} basis={deltaBasis} format="currency" />
             </div>
             <Gauge value={r.quotaValue} goal={r.quotaGoal} display={usdK(r.quotaValue)} />
             <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>

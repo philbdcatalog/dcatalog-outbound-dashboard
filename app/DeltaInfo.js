@@ -5,13 +5,23 @@ import { C } from "../lib/theme";
 
 // Low-weight "i" indicator next to a KPI label. The pace-adjusted delta and its
 // comparison basis live in a hover (desktop) / tap (mobile) popover — no colored
-// arrow on the gauge face. Renders nothing when there's no prior period. `fmtVal`
-// formats the underlying values (e.g. usdK); defaults to a rounded integer.
-export function DeltaInfo({ delta, basis, fmtVal }) {
+// arrow on the gauge face. Renders nothing when there's no prior period.
+//
+// `format` picks how the underlying cur/prior values are rendered. It MUST be a
+// serializable string, never a function — this is a client component ("use
+// client"), and Next's App Router cannot pass a function across the server→client
+// boundary (it throws "Functions cannot be passed directly to Client Components").
+const FORMATTERS = {
+  currency: (n) => "$" + Math.round(n).toLocaleString(),
+  number: (n) => Math.round(n).toLocaleString(),
+  percent: (n) => Math.round(n) + "%",
+};
+
+export function DeltaInfo({ delta, basis, format }) {
   const [open, setOpen] = useState(false);
   if (!delta || !delta.hasPrior) return null;
 
-  const fv = fmtVal || ((n) => Math.round(n).toLocaleString());
+  const fv = FORMATTERS[format] || FORMATTERS.number;
   const { abs, pct, cur, prev } = delta;
   const flat = abs === 0;
   const up = abs > 0;

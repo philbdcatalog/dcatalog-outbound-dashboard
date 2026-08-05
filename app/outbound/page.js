@@ -7,8 +7,6 @@ import PeriodSelector from "../PeriodSelector";
 import { DeltaInfo } from "../DeltaInfo";
 import Nav from "../Nav";
 
-const usdK = (n) => "$" + Math.round((n ?? 0) / 1000) + "K";
-
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
 export const revalidate = 0;
@@ -61,7 +59,7 @@ function RepAvatar({ name }) {
 }
 
 // Speedometer gauge — 3 muted zones (clay / amber / sage), thin arc + needle.
-function Gauge({ label, value, goal, display, delta, fmtAbs, basis }) {
+function Gauge({ label, value, goal, display, delta, format, basis }) {
   const frac = goal > 0 ? Math.min(1, value / goal) : 0;
   const r = 72, cx = 90, cy = 92;
   const pt = (f, rad) => {
@@ -77,7 +75,7 @@ function Gauge({ label, value, goal, display, delta, fmtAbs, basis }) {
     <div style={{ ...card, textAlign: "center" }}>
       <div style={{ fontSize: 12.5, fontWeight: 600, color: C.inkSoft, marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
         {label}
-        <DeltaInfo delta={delta} basis={basis} fmtVal={fmtAbs} />
+        <DeltaInfo delta={delta} basis={basis} format={format} />
       </div>
       <svg viewBox="0 0 180 124" width="100%" style={{ maxWidth: 220 }}>
         <path d={arc(0, 0.42)} fill="none" stroke="#e0796b" strokeWidth={8} strokeLinecap="round" />
@@ -137,10 +135,10 @@ export default async function OutboundDashboard({ searchParams }) {
 
       <div style={seclabel}>Output <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>{period.label}</span></div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
-        <Gauge label="Meetings Booked" value={d.meetingsThisQuarter} goal={d.goals.meetings} display={fmt(d.meetingsThisQuarter)} delta={d.deltas?.meetings} basis={deltaBasis} />
-        <Gauge label="Opportunities Created" value={d.oppsThisQuarter} goal={d.goals.opps} display={fmt(d.oppsThisQuarter)} delta={d.deltas?.opps} basis={deltaBasis} />
-        <Gauge label="Pipeline Generated" value={d.pipelineGenerated} goal={d.goals.pipeline} display={"$" + Math.round(d.pipelineGenerated / 1000) + "K"} delta={d.deltas?.pipeline} fmtAbs={usdK} basis={deltaBasis} />
-        <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.won} display={"$" + Math.round(d.outboundWon / 1000) + "K"} delta={d.deltas?.won} fmtAbs={usdK} basis={deltaBasis} />
+        <Gauge label="Meetings Booked" value={d.meetingsThisQuarter} goal={d.goals.meetings} display={fmt(d.meetingsThisQuarter)} delta={d.deltas?.meetings} format="number" basis={deltaBasis} />
+        <Gauge label="Opportunities Created" value={d.oppsThisQuarter} goal={d.goals.opps} display={fmt(d.oppsThisQuarter)} delta={d.deltas?.opps} format="number" basis={deltaBasis} />
+        <Gauge label="Pipeline Generated" value={d.pipelineGenerated} goal={d.goals.pipeline} display={"$" + Math.round(d.pipelineGenerated / 1000) + "K"} delta={d.deltas?.pipeline} format="currency" basis={deltaBasis} />
+        <Gauge label="Outbound Won" value={d.outboundWon} goal={d.goals.won} display={"$" + Math.round(d.outboundWon / 1000) + "K"} delta={d.deltas?.won} format="currency" basis={deltaBasis} />
       </div>
 
       <div style={seclabel}>Account-Based Funnel <span style={{ textTransform: "none", fontWeight: 400, color: C.muted }}>unique companies · {period.label}</span></div>
