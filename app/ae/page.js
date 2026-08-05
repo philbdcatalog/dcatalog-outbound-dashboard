@@ -2,9 +2,10 @@ import { getAEData, AE_SOURCE_BUCKETS } from "../../lib/ae";
 import { C, card, eyebrow } from "../../lib/theme";
 import { resolvePeriod, periodOptions } from "../../lib/quarter";
 import { repPhotoPath } from "../../lib/roster";
+import { deltaBasisText } from "../../lib/deltas";
 import PeriodSelector from "../PeriodSelector";
 import RepSelector from "../RepSelector";
-import { DeltaChip } from "../DeltaChip";
+import { DeltaInfo } from "../DeltaInfo";
 import Nav from "../Nav";
 
 export const dynamic = "force-dynamic";
@@ -120,6 +121,7 @@ export default async function AEDashboard({ searchParams }) {
   const period = resolvePeriod(searchParams?.period);
   const rep = searchParams?.rep || "all";
   const m = await getAEData({ start: period.start, end: period.end }, rep);
+  const deltaBasis = deltaBasisText(period);
 
   const seclabel = eyebrow;
   const panel = card;
@@ -167,7 +169,7 @@ export default async function AEDashboard({ searchParams }) {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 6 }}>
               <RepAvatar name={r.rep} />
               <span style={{ fontSize: 14, fontWeight: 700, color: C.ink }}>{r.rep}</span>
-              <DeltaChip delta={r.quotaDelta} C={C} fmtAbs={usdK} />
+              <DeltaInfo delta={r.quotaDelta} basis={deltaBasis} fmtVal={usdK} />
             </div>
             <Gauge value={r.quotaValue} goal={r.quotaGoal} display={usdK(r.quotaValue)} />
             <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
